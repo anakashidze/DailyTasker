@@ -55,6 +55,7 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
 
         val dayFormat = remember { SimpleDateFormat("EEEE, MMM d yyyy", Locale.getDefault()) }
         val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+        val fullFormat = remember { SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()) }
 
         LazyColumn(
             modifier = Modifier.padding(padding).fillMaxSize().padding(horizontal = 12.dp),
@@ -76,7 +77,6 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     }
                 }
             } else {
-                val fullFormat = remember { SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()) }
                 items(history, key = { it.id }) { log ->
                     HistoryRow(log, fullFormat, onDelete = { viewModel.deleteHistoryRecord(log.id) })
                 }
