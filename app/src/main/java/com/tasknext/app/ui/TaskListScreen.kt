@@ -64,18 +64,40 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Task?>(null) }
     var draggingTaskId by remember { mutableStateOf<Long?>(null) }
-    var localPool by remember { mutableStateOf<List<Task>>(emptyList()) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     val sortedPool = remember(pool) { pool.sortedBy { it.orderIndex } }
-    LaunchedEffect(sortedPool, draggingTaskId) {
-        // While a card is being dragged the in-memory order is authoritative.
-        // This prevents an asynchronous Room update from flashing the old order back on screen.
-        if (draggingTaskId == null) localPool = sortedPool
+    var localPool by remember { mutableStateOf<List<Task>>(sortedPool) }
+    var pendingPersistedOrder by remember { mutableStateOf<List<Long>?>(null) }
+
+    LaunchedEffect(sortedPool, draggingTaskId, pendingPersistedOrder) {
+        // Never let a stale Room emission replace the order currently shown on screen.
+        // After a drag ends, localPool stays authoritative until Room reports the same
+        // persisted id order. This also prevents a new long-press (with zero movement)
+        // from visually swapping tasks back to their previous positions.
+        if (draggingTaskId != null) return@LaunchedEffect
+
+        val incomingIds = sortedPool.map { it.id }
+        val pendingIds = pendingPersistedOrder
+
+        if (pendingIds == null) {
+            localPool = sortedPool
+        } else if (incomingIds == pendingIds) {
+            localPool = sortedPool
+            pendingPersistedOrder = null
+        } else {
+            // Room has not caught up yet. Keep the current ordering, but refresh each
+            // task's content and include/remove tasks if another action changed the pool.
+            val incomingById = sortedPool.associateBy { it.id }
+            val refreshed = localPool.mapNotNull { incomingById[it.id] }.toMutableList()
+            val existingIds = refreshed.asSequence().map { it.id }.toHashSet()
+            sortedPool.filterNot { it.id in existingIds }.forEach(refreshed::add)
+            localPool = refreshed
+        }
     }
-    val displayPool = if (draggingTaskId != null) localPool else sortedPool
+    val displayPool = localPool
     val tomorrowTask = remember(displayPool, queuedTomorrowId) {
         displayPool.firstOrNull { it.id == queuedTomorrowId }
             ?: displayPool.firstOrNull()
@@ -323,11 +345,15 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     },
                     onDraggingStateChanged = { isDragging ->
                         if (isDragging) {
-                            localPool = sortedPool
+                            // Start from exactly what the user currently sees. Do not reset
+                            // from sortedPool here: that Flow may still contain the order from
+                            // before the previous drag while Room finishes persisting it.
                             draggingTaskId = task.id
                         } else {
                             if (draggingTaskId == task.id && localPool.isNotEmpty()) {
-                                viewModel.reorderPool(localPool.map { it.id })
+                                val finalOrder = localPool.map { it.id }
+                                pendingPersistedOrder = finalOrder
+                                viewModel.reorderPool(finalOrder)
                             }
                             draggingTaskId = null
                         }

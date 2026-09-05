@@ -4,25 +4,26 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Curved progress/next stroke, optically centered inside the adaptive-icon safe zone. -->
+    <!-- Soft circular motion stroke: centered, simple, and kept inside the adaptive-icon safe area. -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#BDEEFF"
-        android:strokeWidth="7"
+        android:strokeColor="#BFEFFF"
+        android:strokeAlpha="0.92"
+        android:strokeWidth="6.5"
         android:strokeLineCap="round"
-        android:pathData="M75,72 C68,82 56,87 44,84 C28,80 20,65 23,50 C26,35 39,25 54,24 C61,24 67,26 72,30" />
+        android:pathData="M72,29 C82,37 87,49 84,61 C81,75 69,85 55,87 C40,89 27,81 22,68 C17,56 20,42 29,33 C38,24 53,21 65,25" />
 
-    <!-- Task check that continues upward into Next. -->
+    <!-- Task check flowing naturally toward the Next arrow. -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="8"
+        android:strokeWidth="8.5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M33,55 L49,69 L75,39" />
+        android:pathData="M31,55 L47,69 C55,61 65,49 76,38" />
 
-    <!-- Arrow head: the 'Next' part of the combined TaskNext mark. -->
+    <!-- Compact arrow head aligned with the check stroke. -->
     <path
         android:fillColor="#5DE1FF"
-        android:pathData="M68,31 L85,35 L77,50 Z" />
+        android:pathData="M69,31 L85,32 L80,48 L76,39 Z" />
 </vector>
