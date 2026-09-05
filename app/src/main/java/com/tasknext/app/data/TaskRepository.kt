@@ -10,6 +10,9 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     fun observePool(): Flow<List<Task>> = dao.observePool()
     fun observeHistory(): Flow<List<CompletionLog>> = dao.observeHistory()
 
+    suspend fun deleteHistoryRecord(id: Long) = dao.deleteHistoryRecord(id)
+    suspend fun clearHistory() = dao.clearHistory()
+
     private fun todayEpochDay(): Long = LocalDate.now().toEpochDay()
 
     suspend fun addTask(task: Task): Long {
@@ -35,6 +38,28 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             settings.queuedTomorrowTaskId = -1L
         }
         dao.delete(id)
+    }
+
+    /** Reinsert a task deleted by a swipe Undo, preserving its original id/state. */
+    suspend fun restoreDeletedTask(task: Task, previousQueuedTomorrowTaskId: Long) {
+        dao.insert(task)
+        if (previousQueuedTomorrowTaskId == task.id) {
+            settings.queuedTomorrowTaskId = task.id
+        }
+    }
+
+    /**
+     * Reverse the latest completion: restore the original active task, remove only
+     * the History row created by that completion, and restore day/tomorrow state.
+     */
+    suspend fun undoCompletion(
+        task: Task,
+        previousQueuedTomorrowTaskId: Long,
+        previousDayCompletedEpochDay: Long
+    ) {
+        dao.undoCompletion(task)
+        settings.queuedTomorrowTaskId = previousQueuedTomorrowTaskId
+        settings.dayCompletedEpochDay = previousDayCompletedEpochDay
     }
 
     suspend fun reorderPool(orderedIds: List<Long>) {

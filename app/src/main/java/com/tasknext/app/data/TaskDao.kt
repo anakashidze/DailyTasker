@@ -55,4 +55,28 @@ interface TaskDao {
 
     @Query("SELECT * FROM completion_log ORDER BY completedAtEpochMillis DESC")
     fun observeHistory(): Flow<List<CompletionLog>>
+
+    @Query("DELETE FROM completion_log WHERE id = :id")
+    suspend fun deleteHistoryRecord(id: Long)
+
+    @Query("DELETE FROM completion_log")
+    suspend fun clearHistory()
+
+    @Query("""
+        DELETE FROM completion_log
+        WHERE id = (
+            SELECT id FROM completion_log
+            WHERE taskId = :taskId
+            ORDER BY completedAtEpochMillis DESC, id DESC
+            LIMIT 1
+        )
+    """)
+    suspend fun deleteLatestLogForTask(taskId: Long)
+
+    /** Restore the exact pre-completion task and remove only its latest History snapshot. */
+    @Transaction
+    suspend fun undoCompletion(task: Task) {
+        deleteLatestLogForTask(task.id)
+        update(task)
+    }
 }

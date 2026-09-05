@@ -7,6 +7,8 @@ import com.tasknext.app.data.AppDatabase
 import com.tasknext.app.data.Priority
 import com.tasknext.app.data.SettingsStore
 import com.tasknext.app.data.Task
+import com.tasknext.app.data.TaskGroupDefinition
+import com.tasknext.app.data.TaskGroups
 import com.tasknext.app.data.TaskRepository
 import com.tasknext.app.notifications.NotificationScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +41,9 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     val history = repo.observeHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _taskGroups = MutableStateFlow(TaskGroups.builtIns + settings.customGroups)
+    val taskGroups: StateFlow<List<TaskGroupDefinition>> = _taskGroups
+
     private val _dayComplete = MutableStateFlow(false)
     val dayComplete: StateFlow<Boolean> = _dayComplete
 
@@ -62,7 +67,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun addTask(
         title: String,
         colorHex: String,
-        colorName: String,
+        groupName: String,
+        groupIcon: String,
         priority: Priority,
         comment: String,
         reminderEnabled: Boolean,
@@ -73,7 +79,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             Task(
                 title = title,
                 colorHex = colorHex,
-                colorName = colorName,
+                groupName = groupName,
+                groupIcon = groupIcon,
                 priority = priority,
                 comment = comment,
                 reminderEnabled = reminderEnabled,
@@ -89,10 +96,46 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         syncTaskReminder(task)
     }
 
+    fun addCustomGroup(group: TaskGroupDefinition) {
+        val clean = group.copy(name = group.name.trim(), builtIn = false)
+        if (clean.name.isBlank()) return
+        if (TaskGroups.builtIns.any { it.name.equals(clean.name, ignoreCase = true) }) return
+        val custom = settings.customGroups
+            .filterNot { it.name.equals(clean.name, ignoreCase = true) } + clean
+        settings.customGroups = custom
+        _taskGroups.value = TaskGroups.builtIns + custom
+    }
+
+    fun deleteHistoryRecord(id: Long) = viewModelScope.launch {
+        repo.deleteHistoryRecord(id)
+    }
+
+    fun clearHistory() = viewModelScope.launch {
+        repo.clearHistory()
+    }
+
     fun deleteTask(task: Task) = viewModelScope.launch {
         NotificationScheduler.cancel(getApplication(), task.id)
         repo.deleteTask(task.id)
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+    }
+
+    fun undoDelete(task: Task, previousQueuedTomorrowTaskId: Long) = viewModelScope.launch {
+        repo.restoreDeletedTask(task, previousQueuedTomorrowTaskId)
+        repo.getTask(task.id)?.let { syncTaskReminder(it) }
+        _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+    }
+
+    fun undoCompletion(
+        task: Task,
+        previousQueuedTomorrowTaskId: Long,
+        previousDayCompletedEpochDay: Long
+    ) = viewModelScope.launch {
+        repo.undoCompletion(task, previousQueuedTomorrowTaskId, previousDayCompletedEpochDay)
+        repo.getTask(task.id)?.let { syncTaskReminder(it) }
+        _dayComplete.value = repo.isDayComplete()
+        _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        _showTomorrowPicker.value = false
     }
 
     fun reorderPool(orderedIds: List<Long>) = viewModelScope.launch {

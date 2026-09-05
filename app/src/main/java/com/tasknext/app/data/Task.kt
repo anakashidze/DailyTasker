@@ -1,28 +1,24 @@
 package com.tasknext.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 enum class Priority { LOW, MEDIUM, HIGH }
 
-/**
- * A task in the backlog pool.
- * - orderIndex: position in the "up next" queue (lower = sooner).
- * - slot: null if sitting in the pool; 0/1/2 if currently one of today's active tasks.
- *   Slot 0 is the mandatory task; slots 1 and 2 are bonus tasks.
- * - reminderHour/Minute: null means "use the global default from Settings".
- */
 @Entity(tableName = "tasks")
 data class Task(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
     val colorHex: String = "#4F46E5",
-    val colorName: String = "Indigo",
+    // Kept in the legacy Room column so existing installations migrate without rebuilding the table.
+    @ColumnInfo(name = "colorName") val groupName: String = "Task",
+    val groupIcon: String = "task",
     val priority: Priority = Priority.MEDIUM,
     val comment: String = "",
     val reminderHour: Int? = null,
     val reminderMinute: Int? = null,
-    val reminderEnabled: Boolean = false,
+    val reminderEnabled: Boolean = true,
     val orderIndex: Int = 0,
     val slot: Int? = null,
     val isArchived: Boolean = false

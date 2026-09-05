@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -28,6 +31,7 @@ import com.tasknext.app.viewmodel.TaskViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
 
 /**
  * "One Thing"-style layout: one giant task fills almost the whole screen,
@@ -53,11 +57,34 @@ fun HomeScreen(
         } ?: Color(0xFF22C55E)
     }
     val bgTint by animateFloatAsState(if (dayComplete) 0.14f else 0.06f, tween(500), label = "bg")
+    val swipeThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(accent.copy(alpha = bgTint))
+            .pointerInput(onOpenList, onOpenSettings) {
+                var horizontalDrag = 0f
+                var navigationTriggered = false
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        horizontalDrag = 0f
+                        navigationTriggered = false
+                    },
+                    onHorizontalDrag = { change, amount ->
+                        if (!navigationTriggered) {
+                            horizontalDrag += amount
+                            if (abs(horizontalDrag) >= swipeThresholdPx) {
+                                change.consume()
+                                navigationTriggered = true
+                                if (horizontalDrag > 0f) onOpenList() else onOpenSettings()
+                            }
+                        }
+                    },
+                    onDragEnd = { horizontalDrag = 0f },
+                    onDragCancel = { horizontalDrag = 0f }
+                )
+            }
     ) {
         Column(
             modifier = Modifier

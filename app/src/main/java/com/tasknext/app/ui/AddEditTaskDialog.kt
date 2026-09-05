@@ -3,10 +3,13 @@ package com.tasknext.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
@@ -21,23 +24,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.tasknext.app.data.Priority
 import com.tasknext.app.data.Task
-import kotlin.math.roundToInt
+import com.tasknext.app.data.TaskGroupDefinition
+import com.tasknext.app.data.TaskGroups
 
-private data class NamedColor(val name: String, val hex: String)
+private val lowPriority = Color(0xFF8DBBFF)
+private val mediumPriority = Color(0xFFFFD45C)
+private val highPriority = Color(0xFFFF8A8A)
 
-private val palette = listOf(
-    NamedColor("Indigo", "#4F46E5"),
-    NamedColor("Green", "#22C55E"),
-    NamedColor("Red", "#EF4444"),
-    NamedColor("Amber", "#F59E0B"),
-    NamedColor("Sky blue", "#0EA5E9"),
-    NamedColor("Pink", "#EC4899"),
-    NamedColor("Gray", "#6B7280")
+private data class GroupColorChoice(val hex: String, val label: String)
+
+private val groupColors = listOf(
+    GroupColorChoice("#4F46E5", "Indigo"),
+    GroupColorChoice("#8B5E3C", "Brown"),
+    GroupColorChoice("#2E9D60", "Green"),
+    GroupColorChoice("#2563EB", "Blue"),
+    GroupColorChoice("#E58A22", "Orange"),
+    GroupColorChoice("#7C3AED", "Purple"),
+    GroupColorChoice("#DC3545", "Red"),
+    GroupColorChoice("#0F9D8A", "Teal"),
+    GroupColorChoice("#DB4F86", "Pink"),
+    GroupColorChoice("#667085", "Gray")
 )
 
-private val lowPriority = Color(0xFFDDEBFF)
-private val mediumPriority = Color(0xFFFFF1B8)
-private val highPriority = Color(0xFFFFD7D7)
+private val groupIconChoices = listOf(
+    "task", "home", "health", "work", "star", "fitness",
+    "bike", "shopping", "study", "food", "travel", "pet", "book"
+)
 
 private fun priorityColor(priority: Priority): Color = when (priority) {
     Priority.LOW -> lowPriority
@@ -48,31 +60,24 @@ private fun priorityColor(priority: Priority): Color = when (priority) {
 private fun priorityLabel(priority: Priority): String =
     priority.name.lowercase().replaceFirstChar { it.uppercase() }
 
-private fun parseRgb(hex: String): Triple<Int, Int, Int> = try {
-    val value = android.graphics.Color.parseColor(hex)
-    Triple(
-        android.graphics.Color.red(value),
-        android.graphics.Color.green(value),
-        android.graphics.Color.blue(value)
-    )
+private fun parseColor(hex: String): Color = try {
+    Color(android.graphics.Color.parseColor(hex))
 } catch (_: Exception) {
-    Triple(79, 70, 229)
+    Color.Gray
 }
-
-private fun rgbToHex(red: Int, green: Int, blue: Int): String =
-    "#%02X%02X%02X".format(red.coerceIn(0, 255), green.coerceIn(0, 255), blue.coerceIn(0, 255))
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditTaskDialog(
     existing: Task?,
+    availableGroups: List<TaskGroupDefinition>,
     defaultReminderHour: Int,
     defaultReminderMinute: Int,
+    onAddGroup: (TaskGroupDefinition) -> Unit,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
-        color: String,
-        colorName: String,
+        group: TaskGroupDefinition,
         priority: Priority,
         comment: String,
         reminderOn: Boolean,
@@ -81,11 +86,20 @@ fun AddEditTaskDialog(
     ) -> Unit
 ) {
     var title by remember(existing?.id) { mutableStateOf(existing?.title ?: "") }
-    var color by remember(existing?.id) { mutableStateOf(existing?.colorHex ?: palette.first().hex) }
-    var colorName by remember(existing?.id) { mutableStateOf(existing?.colorName ?: palette.first().name) }
+    var selectedGroup by remember(existing?.id) {
+        mutableStateOf(
+            existing?.let {
+                TaskGroupDefinition(
+                    name = it.groupName,
+                    colorHex = it.colorHex,
+                    iconKey = it.groupIcon
+                )
+            } ?: TaskGroups.default
+        )
+    }
     var priority by remember(existing?.id) { mutableStateOf(existing?.priority ?: Priority.MEDIUM) }
     var comment by remember(existing?.id) { mutableStateOf(existing?.comment ?: "") }
-    var reminderOn by remember(existing?.id) { mutableStateOf(existing?.reminderEnabled ?: false) }
+    var reminderOn by remember(existing?.id) { mutableStateOf(existing?.reminderEnabled ?: true) }
     var useDefaultTime by remember(existing?.id) {
         mutableStateOf(existing == null || (existing.reminderHour == null && existing.reminderMinute == null))
     }
@@ -95,20 +109,21 @@ fun AddEditTaskDialog(
     var minute by remember(existing?.id) {
         mutableIntStateOf((existing?.reminderMinute ?: defaultReminderMinute).coerceIn(0, 59))
     }
-    var showTimePicker by remember { mutableStateOf(false) }
-    var colorExpanded by remember { mutableStateOf(false) }
-    var priorityExpanded by remember { mutableStateOf(false) }
-    var customColorMode by remember(existing?.id) {
-        mutableStateOf(palette.none { it.hex.equals(color, ignoreCase = true) })
-    }
-    val initialRgb = remember(existing?.id) { parseRgb(color) }
-    var customRed by remember(existing?.id) { mutableIntStateOf(initialRgb.first) }
-    var customGreen by remember(existing?.id) { mutableIntStateOf(initialRgb.second) }
-    var customBlue by remember(existing?.id) { mutableIntStateOf(initialRgb.third) }
 
-    fun updateCustomColor() {
-        color = rgbToHex(customRed, customGreen, customBlue)
-        if (colorName.isBlank() || palette.any { it.name == colorName }) colorName = "Custom"
+    var showTimePicker by remember { mutableStateOf(false) }
+    var groupExpanded by remember { mutableStateOf(false) }
+    var priorityExpanded by remember { mutableStateOf(false) }
+    var showNewGroup by remember { mutableStateOf(false) }
+    var newGroupName by remember { mutableStateOf("") }
+    var newGroupIcon by remember { mutableStateOf("star") }
+    var newGroupColor by remember { mutableStateOf("#7C3AED") }
+
+    val menuGroups = remember(availableGroups, selectedGroup) {
+        if (availableGroups.any { it.name.equals(selectedGroup.name, ignoreCase = true) }) {
+            availableGroups
+        } else {
+            listOf(selectedGroup) + availableGroups
+        }
     }
 
     AlertDialog(
@@ -121,7 +136,12 @@ fun AddEditTaskDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -134,7 +154,6 @@ fun AddEditTaskDialog(
                     )
                 )
 
-                // Keep the two most frequently changed attributes together.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -154,7 +173,7 @@ fun AddEditTaskDialog(
                                     containerColor = priorityColor(priority)
                                 )
                             ) {
-                                Text(priorityLabel(priority), color = Color(0xFF2B2B2B))
+                                Text(priorityLabel(priority), color = Color(0xFF202020), maxLines = 1)
                             }
                             DropdownMenu(
                                 expanded = priorityExpanded,
@@ -182,64 +201,61 @@ fun AddEditTaskDialog(
 
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Color",
+                            "Group",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Box(Modifier.fillMaxWidth()) {
-                            val swatch = try {
-                                Color(android.graphics.Color.parseColor(color))
-                            } catch (_: Exception) {
-                                Color.Gray
-                            }
                             OutlinedButton(
-                                onClick = { colorExpanded = true },
+                                onClick = { groupExpanded = true },
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                             ) {
-                                Box(Modifier.size(16.dp).background(swatch, CircleShape))
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    colorName.ifBlank { "Custom" },
-                                    maxLines = 1
+                                GroupIcon(
+                                    key = selectedGroup.iconKey,
+                                    contentDescription = null,
+                                    tint = parseColor(selectedGroup.colorHex),
+                                    modifier = Modifier.size(18.dp)
                                 )
+                                Spacer(Modifier.width(5.dp))
+                                Text(selectedGroup.name, maxLines = 1)
                             }
                             DropdownMenu(
-                                expanded = colorExpanded,
-                                onDismissRequest = { colorExpanded = false }
+                                expanded = groupExpanded,
+                                onDismissRequest = { groupExpanded = false }
                             ) {
-                                palette.forEach { choice ->
+                                menuGroups.forEach { group ->
                                     DropdownMenuItem(
-                                        text = { Text(choice.name) },
+                                        text = { Text(group.name) },
                                         leadingIcon = {
-                                            Box(
-                                                Modifier
-                                                    .size(18.dp)
-                                                    .background(
-                                                        Color(android.graphics.Color.parseColor(choice.hex)),
-                                                        CircleShape
-                                                    )
+                                            GroupIcon(
+                                                key = group.iconKey,
+                                                contentDescription = null,
+                                                tint = parseColor(group.colorHex),
+                                                modifier = Modifier.size(20.dp)
                                             )
                                         },
                                         onClick = {
-                                            color = choice.hex
-                                            colorName = choice.name
-                                            customColorMode = false
-                                            val rgb = parseRgb(choice.hex)
-                                            customRed = rgb.first
-                                            customGreen = rgb.second
-                                            customBlue = rgb.third
-                                            colorExpanded = false
+                                            selectedGroup = group
+                                            groupExpanded = false
+                                            showNewGroup = false
                                         }
                                     )
                                 }
                                 HorizontalDivider()
                                 DropdownMenuItem(
-                                    text = { Text("Custom color…") },
+                                    text = { Text("Add new group…") },
+                                    leadingIcon = {
+                                        GroupIcon(
+                                            key = "star",
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
                                     onClick = {
-                                        customColorMode = true
-                                        if (palette.any { it.name == colorName }) colorName = "Custom"
-                                        colorExpanded = false
+                                        groupExpanded = false
+                                        showNewGroup = true
                                     }
                                 )
                             }
@@ -247,38 +263,109 @@ fun AddEditTaskDialog(
                     }
                 }
 
-                if (customColorMode) {
+                if (showNewGroup) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                     ) {
                         Column(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
+                            Text("New group", style = MaterialTheme.typography.titleSmall)
                             OutlinedTextField(
-                                value = colorName,
-                                onValueChange = { colorName = it },
+                                value = newGroupName,
+                                onValueChange = { newGroupName = it },
                                 modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Custom color name") },
+                                label = { Text("Group name") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     capitalization = KeyboardCapitalization.Words,
-                                    imeAction = ImeAction.Next
+                                    imeAction = ImeAction.Done
                                 )
                             )
-                            RgbSlider("Red", customRed) {
-                                customRed = it
-                                updateCustomColor()
+
+                            Text("Icon", style = MaterialTheme.typography.labelMedium)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                groupIconChoices.forEach { key ->
+                                    val selected = newGroupIcon == key
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                        else MaterialTheme.colorScheme.surface,
+                                        border = if (selected) {
+                                            androidx.compose.foundation.BorderStroke(
+                                                1.5.dp,
+                                                MaterialTheme.colorScheme.primary
+                                            )
+                                        } else null
+                                    ) {
+                                        IconButton(
+                                            onClick = { newGroupIcon = key },
+                                            modifier = Modifier.size(38.dp)
+                                        ) {
+                                            GroupIcon(
+                                                key = key,
+                                                contentDescription = "Choose $key icon",
+                                                tint = parseColor(newGroupColor),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                            RgbSlider("Green", customGreen) {
-                                customGreen = it
-                                updateCustomColor()
+
+                            Text("Color", style = MaterialTheme.typography.labelMedium)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                groupColors.forEach { choice ->
+                                    val selected = choice.hex.equals(newGroupColor, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(parseColor(choice.hex), CircleShape)
+                                            .then(
+                                                if (selected) {
+                                                    Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                                } else Modifier
+                                            )
+                                            .clickable { newGroupColor = choice.hex }
+                                    )
+                                }
                             }
-                            RgbSlider("Blue", customBlue) {
-                                customBlue = it
-                                updateCustomColor()
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { showNewGroup = false }) { Text("Cancel") }
+                                TextButton(
+                                    enabled = newGroupName.isNotBlank() &&
+                                        menuGroups.none { it.name.equals(newGroupName.trim(), ignoreCase = true) },
+                                    onClick = {
+                                        val group = TaskGroupDefinition(
+                                            name = newGroupName.trim(),
+                                            colorHex = newGroupColor,
+                                            iconKey = newGroupIcon
+                                        )
+                                        onAddGroup(group)
+                                        selectedGroup = group
+                                        newGroupName = ""
+                                        showNewGroup = false
+                                    }
+                                ) {
+                                    Text("Add")
+                                }
                             }
                         }
                     }
@@ -297,39 +384,34 @@ fun AddEditTaskDialog(
                     )
                 )
 
-                Surface(
+                // Intentionally no separate container: reminder controls blend into the dialog surface.
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(0.dp)
-                    ) {
+                    CompactCheckRow(
+                        checked = reminderOn,
+                        text = "Remind me",
+                        onToggle = { reminderOn = !reminderOn }
+                    )
+
+                    if (reminderOn) {
                         CompactCheckRow(
-                            checked = reminderOn,
-                            text = "Remind me",
-                            onToggle = { reminderOn = !reminderOn }
+                            checked = useDefaultTime,
+                            text = "Use default time (%02d:%02d)".format(
+                                defaultReminderHour,
+                                defaultReminderMinute
+                            ),
+                            onToggle = { useDefaultTime = !useDefaultTime }
                         )
 
-                        if (reminderOn) {
-                            CompactCheckRow(
-                                checked = useDefaultTime,
-                                text = "Use default time (%02d:%02d)".format(
-                                    defaultReminderHour,
-                                    defaultReminderMinute
-                                ),
-                                onToggle = { useDefaultTime = !useDefaultTime }
-                            )
-
-                            if (!useDefaultTime) {
-                                TextButton(
-                                    onClick = { showTimePicker = true },
-                                    modifier = Modifier.align(Alignment.Start),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text("Reminder time  %02d:%02d".format(hour, minute))
-                                }
+                        if (!useDefaultTime) {
+                            TextButton(
+                                onClick = { showTimePicker = true },
+                                modifier = Modifier.align(Alignment.Start),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text("Reminder time  %02d:%02d".format(hour, minute))
                             }
                         }
                     }
@@ -338,12 +420,11 @@ fun AddEditTaskDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = title.isNotBlank() && colorName.isNotBlank(),
+                enabled = title.isNotBlank(),
                 onClick = {
                     onSave(
                         title.trim(),
-                        color,
-                        colorName.trim(),
+                        selectedGroup,
                         priority,
                         comment.trim(),
                         reminderOn,
@@ -384,7 +465,7 @@ private fun CompactCheckRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onToggle)
-            .padding(horizontal = 4.dp, vertical = 4.dp),
+            .padding(horizontal = 2.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -411,28 +492,11 @@ private fun CompactCheckRow(
                 )
             }
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(7.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun RgbSlider(label: String, value: Int, onValueChange: (Int) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, style = MaterialTheme.typography.labelSmall)
-            Text(value.toString(), style = MaterialTheme.typography.labelSmall)
-        }
-        Slider(
-            value = value.toFloat(),
-            onValueChange = { onValueChange(it.roundToInt().coerceIn(0, 255)) },
-            valueRange = 0f..255f,
-            steps = 254,
-            modifier = Modifier.height(28.dp)
         )
     }
 }

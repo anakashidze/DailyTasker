@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Task::class, CompletionLog::class], version = 3, exportSchema = false)
+@Database(entities = [Task::class, CompletionLog::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
 
@@ -54,6 +54,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tasks ADD COLUMN groupIcon TEXT NOT NULL DEFAULT 'task'")
+                db.execSQL("UPDATE tasks SET colorName = 'Task', groupIcon = 'task' WHERE colorName = 'Indigo'")
+                db.execSQL("UPDATE tasks SET colorName = 'Health', groupIcon = 'health' WHERE colorName = 'Green'")
+                db.execSQL("UPDATE tasks SET colorName = 'Work', groupIcon = 'work' WHERE colorName = 'Sky blue'")
+                db.execSQL("UPDATE tasks SET colorName = 'Home', groupIcon = 'home', colorHex = '#8B5E3C' WHERE colorName = 'Amber'")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -61,7 +71,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "tasknext.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }

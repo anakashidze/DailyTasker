@@ -83,3 +83,6 @@ the older build once before installing v1.2.1. From v1.2.1 onward, keep the incl
 - Drag reordering is intentionally handle-based and stepwise rather than a free-floating list animation.
 - The launcher icon is still a placeholder.
 - The project does not include a Gradle wrapper; GitHub Actions installs Gradle 8.7 explicitly.
+
+## Version 1.4.0
+See `FIXES_1.4.0.md` for the latest interaction and Undo changes.

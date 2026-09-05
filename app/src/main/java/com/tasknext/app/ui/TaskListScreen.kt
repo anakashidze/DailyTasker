@@ -21,23 +21,29 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.tasknext.app.data.Priority
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
-private val priorityLow = Color(0xFFDDEBFF)
-private val priorityMedium = Color(0xFFFFF1B8)
-private val priorityHigh = Color(0xFFFFD7D7)
+// More visible than the earlier very pale priority chips while still keeping a soft UI.
+private val priorityLow = Color(0xFF8DBBFF)
+private val priorityMedium = Color(0xFFFFD45C)
+private val priorityHigh = Color(0xFFFF8A8A)
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -50,13 +56,59 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val mandatory by viewModel.mandatoryTask.collectAsState()
     val bonusTasks by viewModel.bonusTasks.collectAsState()
     val queuedTomorrowId by viewModel.queuedTomorrowTaskId.collectAsState()
+    val taskGroups by viewModel.taskGroups.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Task?>(null) }
+    var draggingTaskId by remember { mutableStateOf<Long?>(null) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     val displayPool = remember(pool) { pool.sortedBy { it.orderIndex } }
     val tomorrowTask = remember(displayPool, queuedTomorrowId) {
         displayPool.firstOrNull { it.id == queuedTomorrowId }
             ?: displayPool.firstOrNull()
+    }
+
+    suspend fun showUndoSnackbar(message: String, undo: () -> Unit) {
+        // Keep one clear undo decision visible at a time. A newer action replaces an older snackbar.
+        snackbarHostState.currentSnackbarData?.dismiss()
+        val result = withTimeoutOrNull(15_000L) {
+            snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = "UNDO",
+                withDismissAction = false,
+                duration = SnackbarDuration.Indefinite
+            )
+        }
+        if (result == SnackbarResult.ActionPerformed) undo()
+    }
+
+    fun deleteWithUndo(task: Task) {
+        val previousQueuedTomorrowId = queuedTomorrowId
+        val job = viewModel.deleteTask(task)
+        scope.launch {
+            job.join()
+            showUndoSnackbar("Task deleted") {
+                viewModel.undoDelete(task, previousQueuedTomorrowId)
+            }
+        }
+    }
+
+    fun completeWithUndo(task: Task) {
+        val previousQueuedTomorrowId = queuedTomorrowId
+        val previousDayCompletedEpochDay = viewModel.settings.dayCompletedEpochDay
+        val job = viewModel.completeFromList(task.id)
+        scope.launch {
+            job.join()
+            showUndoSnackbar("Task completed") {
+                viewModel.undoCompletion(
+                    task = task,
+                    previousQueuedTomorrowTaskId = previousQueuedTomorrowId,
+                    previousDayCompletedEpochDay = previousDayCompletedEpochDay
+                )
+            }
+        }
     }
 
     Scaffold(
@@ -69,6 +121,33 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     }
                 }
             )
+        },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) { data ->
+                Snackbar(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 28.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    action = {
+                        data.visuals.actionLabel?.let { label ->
+                            TextButton(
+                                onClick = { data.performAction() },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.inversePrimary
+                                )
+                            ) {
+                                Text(label, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                ) {
+                    Text(data.visuals.message)
+                }
+            }
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAdd = true }) {
@@ -91,8 +170,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         task = task,
                         tag = "TODAY",
                         onEdit = { editing = task },
-                        onDelete = { viewModel.deleteTask(task) },
-                        onComplete = { viewModel.completeFromList(task.id) }
+                        onDelete = { deleteWithUndo(task) },
+                        onComplete = { completeWithUndo(task) }
                     )
                 }
                 item { Spacer(Modifier.height(6.dp)) }
@@ -105,10 +184,13 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         task = task,
                         tag = "BONUS",
                         onEdit = { editing = task },
-                        onDelete = { viewModel.deleteTask(task) },
-                        onComplete = { viewModel.completeFromList(task.id) },
-                        dragHint = "Drag down to return to backlog",
-                        onDragDown = { viewModel.moveBonusToBacklog(task.id) }
+                        onDelete = { deleteWithUndo(task) },
+                        onComplete = { completeWithUndo(task) },
+                        dragHint = "Long-press and drag down to return to backlog",
+                        onDragDown = { viewModel.moveBonusToBacklog(task.id) },
+                        onDraggingStateChanged = { isDragging ->
+                            draggingTaskId = if (isDragging) task.id else null
+                        }
                     )
                 }
                 item { Spacer(Modifier.height(6.dp)) }
@@ -118,7 +200,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 Column {
                     SectionTitle("Backlog")
                     Text(
-                        "Top item is next. Hold the drag handle to reorder; drag the first item upward to make it Today.",
+                        "Top item is next. Long-press any task card to drag; drag the first item upward to make it Today.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -138,23 +220,28 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             itemsIndexed(displayPool, key = { _, task -> "pool-${task.id}" }) { index, task ->
                 val isTomorrow = task.id == tomorrowTask?.id
                 val canMakeBonus = bonusTasks.size < 2 && task.id != queuedTomorrowId
+                val itemModifier = if (draggingTaskId == task.id) {
+                    Modifier.zIndex(10f)
+                } else {
+                    Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 300))
+                }
 
                 SwipeableTaskRow(
-                    modifier = Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 220)),
+                    modifier = itemModifier,
                     task = task,
                     tag = if (isTomorrow) {
                         if (queuedTomorrowId != -1L) "TOMORROW" else "NEXT"
                     } else null,
                     onEdit = { editing = task },
-                    onDelete = { viewModel.deleteTask(task) },
-                    onComplete = { viewModel.completeFromList(task.id) },
+                    onDelete = { deleteWithUndo(task) },
+                    onComplete = { completeWithUndo(task) },
                     onMakeBonus = if (canMakeBonus) {
                         { viewModel.activateBonusFromPool(task.id) }
                     } else null,
                     dragHint = if (index == 0) {
-                        "Drag up to make Today; down to reorder"
+                        "Long-press and drag up to make Today; drag down to reorder"
                     } else {
-                        "Drag up or down to reorder"
+                        "Long-press and drag up or down to reorder"
                     },
                     onDragUp = {
                         if (index == 0) {
@@ -173,7 +260,10 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             ids[index] = displayPool[index + 1].id
                             viewModel.reorderPool(ids)
                         }
-                    } else null
+                    } else null,
+                    onDraggingStateChanged = { isDragging ->
+                        draggingTaskId = if (isDragging) task.id else null
+                    }
                 )
             }
         }
@@ -182,11 +272,23 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     if (showAdd) {
         AddEditTaskDialog(
             existing = null,
+            availableGroups = taskGroups,
             defaultReminderHour = viewModel.settings.defaultReminderHour,
             defaultReminderMinute = viewModel.settings.defaultReminderMinute,
+            onAddGroup = { viewModel.addCustomGroup(it) },
             onDismiss = { showAdd = false },
-            onSave = { title, color, colorName, priority, comment, remOn, h, m ->
-                viewModel.addTask(title, color, colorName, priority, comment, remOn, h, m)
+            onSave = { title, group, priority, comment, remOn, h, m ->
+                viewModel.addTask(
+                    title = title,
+                    colorHex = group.colorHex,
+                    groupName = group.name,
+                    groupIcon = group.iconKey,
+                    priority = priority,
+                    comment = comment,
+                    reminderEnabled = remOn,
+                    hour = h,
+                    minute = m
+                )
                 showAdd = false
             }
         )
@@ -195,15 +297,18 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     editing?.let { task ->
         AddEditTaskDialog(
             existing = task,
+            availableGroups = taskGroups,
             defaultReminderHour = viewModel.settings.defaultReminderHour,
             defaultReminderMinute = viewModel.settings.defaultReminderMinute,
+            onAddGroup = { viewModel.addCustomGroup(it) },
             onDismiss = { editing = null },
-            onSave = { title, color, colorName, priority, comment, remOn, h, m ->
+            onSave = { title, group, priority, comment, remOn, h, m ->
                 viewModel.updateTask(
                     task.copy(
                         title = title,
-                        colorHex = color,
-                        colorName = colorName,
+                        colorHex = group.colorHex,
+                        groupName = group.name,
+                        groupIcon = group.iconKey,
                         priority = priority,
                         comment = comment,
                         reminderEnabled = remOn,
@@ -238,37 +343,40 @@ private fun SwipeableTaskRow(
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
     onDragUp: (() -> Unit)? = null,
-    onDragDown: (() -> Unit)? = null
+    onDragDown: (() -> Unit)? = null,
+    onDraggingStateChanged: (Boolean) -> Unit = {}
 ) {
-    var askDelete by remember(task.id) { mutableStateOf(false) }
-    var askComplete by remember(task.id) { mutableStateOf(false) }
     var rowDragging by remember(task.id) { mutableStateOf(false) }
 
     val dismissState = rememberDismissState(
         confirmStateChange = { value ->
-            if (!rowDragging) {
+            if (rowDragging) {
+                false
+            } else {
                 when (value) {
-                    DismissValue.DismissedToStart -> askDelete = true
-                    DismissValue.DismissedToEnd -> askComplete = true
-                    DismissValue.Default -> Unit
+                    DismissValue.DismissedToStart -> {
+                        onDelete()
+                        true
+                    }
+                    DismissValue.DismissedToEnd -> {
+                        onComplete()
+                        true
+                    }
+                    DismissValue.Default -> true
                 }
             }
-            false
         }
     )
 
     SwipeToDismiss(
-        modifier = modifier,
+        modifier = modifier.zIndex(if (rowDragging) 10f else 0f),
         state = dismissState,
         directions = setOf(DismissDirection.StartToEnd, DismissDirection.EndToStart),
         background = {
-            // Do not draw an action layer while idle or while the drag handle is active.
-            // Previously the red "Delete" layer existed permanently underneath a translucent row,
-            // which made Delete/Edit-like silhouettes visible through the task card.
             val direction = dismissState.dismissDirection
             if (direction != null && !rowDragging) {
                 val isComplete = direction == DismissDirection.StartToEnd
-                val bg = if (isComplete) Color(0xFFE1F5E7) else Color(0xFFFFE2E2)
+                val bg = if (isComplete) Color(0xFFD7F3DF) else Color(0xFFFFD8D8)
                 val icon = if (isComplete) Icons.Default.Check else Icons.Default.Delete
                 val label = if (isComplete) "Complete" else "Delete"
                 Row(
@@ -298,52 +406,13 @@ private fun SwipeableTaskRow(
                 dragHint = dragHint,
                 onDragUp = onDragUp,
                 onDragDown = onDragDown,
-                onDraggingChanged = { rowDragging = it }
+                onDraggingChanged = { isDragging ->
+                    rowDragging = isDragging
+                    onDraggingStateChanged(isDragging)
+                }
             )
         }
     )
-
-    if (askDelete) {
-        AlertDialog(
-            onDismissRequest = { askDelete = false },
-            title = { Text("Delete task?") },
-            text = { Text("Delete “${task.title}” permanently?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    askDelete = false
-                    onDelete()
-                }) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { askDelete = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (askComplete) {
-        AlertDialog(
-            onDismissRequest = { askComplete = false },
-            title = { Text("Mark as completed?") },
-            text = {
-                Text(
-                    if (task.slot == null) {
-                        "Mark “${task.title}” as completed without making it Today’s task?"
-                    } else {
-                        "Mark “${task.title}” as completed?"
-                    }
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    askComplete = false
-                    onComplete()
-                }) { Text("Complete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { askComplete = false }) { Text("Cancel") }
-            }
-        )
-    }
 }
 
 @Composable
@@ -365,47 +434,40 @@ private fun TaskRow(
         }
     }
 
+    val cardColor = lerp(MaterialTheme.colorScheme.surface, color, 0.10f)
+
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
-    val thresholdPx = with(density) { 58.dp.toPx() }
-    val dragElevationPx = with(density) { 8.dp.toPx() }
+    val rowSpacingPx = with(density) { 8.dp.toPx() }
+    val fallbackThresholdPx = with(density) { 72.dp.toPx() }
+    val dragElevationPx = with(density) { 10.dp.toPx() }
+    var rowHeightPx by remember(task.id) { mutableIntStateOf(0) }
     var dragOffset by remember(task.id) { mutableFloatStateOf(0f) }
     var dragging by remember(task.id) { mutableStateOf(false) }
     val currentDragUp by rememberUpdatedState(onDragUp)
     val currentDragDown by rememberUpdatedState(onDragDown)
 
+    val canDrag = onDragUp != null || onDragDown != null
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .zIndex(if (dragging) 2f else 0f)
+            .onSizeChanged { rowHeightPx = it.height }
             .graphicsLayer(
-                translationY = if (dragging) dragOffset * 0.22f else 0f,
-                scaleX = if (dragging) 1.015f else 1f,
-                scaleY = if (dragging) 1.015f else 1f,
+                translationY = if (dragging) dragOffset else 0f,
+                scaleX = if (dragging) 1.018f else 1f,
+                scaleY = if (dragging) 1.018f else 1f,
                 shadowElevation = if (dragging) dragElevationPx else 0f,
                 shape = RoundedCornerShape(12.dp)
             )
-            .background(color.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-            .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier
-                .width(5.dp)
-                .height(40.dp)
-                .background(color, RoundedCornerShape(3.dp))
-        )
-        Spacer(Modifier.width(7.dp))
-
-        // Left edge is reserved exclusively for dragging. It is deliberately not clickable for edit.
-        if (onDragUp != null || onDragDown != null) {
-            Icon(
-                Icons.Default.DragHandle,
-                contentDescription = dragHint ?: "Drag to move task",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .size(36.dp)
-                    .pointerInput(task.id) {
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (dragging) lerp(MaterialTheme.colorScheme.surface, color, 0.16f) else cardColor,
+                RoundedCornerShape(12.dp)
+            )
+            .then(
+                if (canDrag) {
+                    Modifier.pointerInput(task.id) {
                         detectDragGesturesAfterLongPress(
                             onDragStart = {
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -427,23 +489,49 @@ private fun TaskRow(
                             change.consume()
                             dragOffset += dragAmount.y
 
-                            if (dragOffset <= -thresholdPx && currentDragUp != null) {
+                            // Swap only after the dragged card has travelled roughly one full
+                            // row. This makes the card follow the finger before any reorder occurs.
+                            val swapDistance = if (rowHeightPx > 0) {
+                                rowHeightPx.toFloat() + rowSpacingPx
+                            } else {
+                                fallbackThresholdPx
+                            }
+
+                            if (dragOffset <= -swapDistance && currentDragUp != null) {
                                 currentDragUp?.invoke()
-                                // Keep part of the finger movement instead of snapping the dragged
-                                // card completely back to zero after each swap.
-                                dragOffset += thresholdPx
-                            } else if (dragOffset >= thresholdPx && currentDragDown != null) {
+                                // The item's layout position moves one row after reordering.
+                                // Compensate by one row so the card stays under the finger.
+                                dragOffset += swapDistance
+                            } else if (dragOffset >= swapDistance && currentDragDown != null) {
                                 currentDragDown?.invoke()
-                                dragOffset -= thresholdPx
+                                dragOffset -= swapDistance
                             }
                         }
                     }
+                } else {
+                    Modifier
+                }
             )
-            Spacer(Modifier.width(2.dp))
+            .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier.size(30.dp),
+            shape = CircleShape,
+            color = color.copy(alpha = 0.16f)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                GroupIcon(
+                    key = task.groupIcon,
+                    contentDescription = task.groupName,
+                    tint = color,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
+        Spacer(Modifier.width(6.dp))
 
-        // Only the center content opens Edit. Drag handle (left) and Bonus star (right)
-        // remain independent touch targets.
+        // A normal tap on the center opens Edit. Long-pressing anywhere on the card starts drag.
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -457,18 +545,26 @@ private fun TaskRow(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(4.dp))
-            PriorityPill(task.priority)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                PriorityPill(task.priority)
+                Text(
+                    task.groupName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
-        // Fixed trailing area. The weighted title column must wrap/ellipsize before it can
-        // reach these controls, so NEXT/TOMORROW/BONUS/TODAY never overlap the title.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            if (tag != null) {
-                StatusPill(tag)
-            }
+            if (tag != null) StatusPill(tag)
 
             if (onMakeBonus != null) {
                 IconButton(onClick = onMakeBonus, modifier = Modifier.size(38.dp)) {
@@ -516,7 +612,7 @@ private fun PriorityPill(priority: Priority) {
             priority.name.lowercase().replaceFirstChar { it.uppercase() },
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF2B2B2B)
+            color = Color(0xFF202020)
         )
     }
 }
