@@ -1,10 +1,7 @@
 package com.tasknext.app.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -77,14 +74,16 @@ fun HomeScreen(
             )
 
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                AnimatedVisibility(dayComplete, enter = fadeIn(), exit = fadeOut()) {
-                    DayCompleteHero(accent)
-                }
-                AnimatedVisibility(!dayComplete && mandatory != null, enter = fadeIn(), exit = fadeOut()) {
-                    mandatory?.let { OneThingHero(task = it, accent = accent, onDone = { viewModel.completeMandatory(it.id) }) }
-                }
-                if (!dayComplete && mandatory == null) {
-                    Text(
+                when {
+                    dayComplete -> DayCompleteHero(accent)
+                    mandatory != null -> mandatory?.let { task ->
+                        OneThingHero(
+                            task = task,
+                            accent = accent,
+                            onDone = { viewModel.completeMandatory(task.id) }
+                        )
+                    }
+                    else -> Text(
                         "Nothing set for today.\nAdd one thing.",
                         style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center,

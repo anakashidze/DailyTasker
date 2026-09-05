@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val pool by viewModel.pool.collectAsState()

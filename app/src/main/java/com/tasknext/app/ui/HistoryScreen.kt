@@ -18,6 +18,7 @@ import com.tasknext.app.viewmodel.TaskViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val history by viewModel.history.collectAsState()
