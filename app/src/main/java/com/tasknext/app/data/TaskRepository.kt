@@ -33,6 +33,15 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
 
     suspend fun updateTask(task: Task) = dao.update(task)
 
+    suspend fun reassignRemovedGroup(removedGroupName: String, defaultGroup: TaskGroupDefinition) {
+        dao.reassignRemovedGroup(
+            removedGroupName = removedGroupName,
+            defaultColorHex = defaultGroup.colorHex,
+            defaultGroupName = defaultGroup.name,
+            defaultIconKey = defaultGroup.iconKey
+        )
+    }
+
     suspend fun deleteTask(id: Long) {
         if (settings.queuedTomorrowTaskId == id) {
             settings.queuedTomorrowTaskId = -1L

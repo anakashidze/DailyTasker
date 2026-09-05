@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -74,6 +75,7 @@ fun AddEditTaskDialog(
     defaultReminderHour: Int,
     defaultReminderMinute: Int,
     onAddGroup: (TaskGroupDefinition) -> Unit,
+    onRemoveGroup: (TaskGroupDefinition) -> Unit,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -235,6 +237,26 @@ fun AddEditTaskDialog(
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         },
+                                        trailingIcon = if (!group.builtIn) {
+                                            {
+                                                IconButton(
+                                                    onClick = {
+                                                        onRemoveGroup(group)
+                                                        if (selectedGroup.name.equals(group.name, ignoreCase = true)) {
+                                                            selectedGroup = TaskGroups.default
+                                                        }
+                                                        groupExpanded = false
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.DeleteOutline,
+                                                        contentDescription = "Remove ${group.name} group",
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                        } else null,
                                         onClick = {
                                             selectedGroup = group
                                             groupExpanded = false
@@ -244,7 +266,7 @@ fun AddEditTaskDialog(
                                 }
                                 HorizontalDivider()
                                 DropdownMenuItem(
-                                    text = { Text("Add new group…") },
+                                    text = { Text("Add new group") },
                                     leadingIcon = {
                                         GroupIcon(
                                             key = "star",

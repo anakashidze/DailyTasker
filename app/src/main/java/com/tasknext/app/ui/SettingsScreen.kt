@@ -1,5 +1,7 @@
 package com.tasknext.app.ui
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -10,6 +12,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.tasknext.app.viewmodel.TaskViewModel
@@ -32,6 +37,7 @@ fun SettingsScreen(
     var darkTheme by remember { mutableStateOf(settings.darkTheme) }
     var groupByDay by remember { mutableStateOf(settings.groupHistoryByDay) }
     var showDefaultTimePicker by remember { mutableStateOf(false) }
+    val backSwipeThresholdPx = with(LocalDensity.current) { 42.dp.toPx() }
 
     Scaffold(
         topBar = {
@@ -49,6 +55,30 @@ fun SettingsScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
+                .pointerInput(onBack) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        var totalX = 0f
+                        var totalY = 0f
+                        var triggered = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            if (!change.isConsumed && !triggered) {
+                                val delta = change.position - change.previousPosition
+                                totalX += delta.x
+                                totalY += delta.y
+                                if (totalX >= backSwipeThresholdPx &&
+                                    kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.15f
+                                ) {
+                                    triggered = true
+                                    onBack()
+                                }
+                            }
+                        }
+                    }
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)

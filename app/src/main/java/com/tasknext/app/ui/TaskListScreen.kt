@@ -4,6 +4,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -61,14 +64,34 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Task?>(null) }
     var draggingTaskId by remember { mutableStateOf<Long?>(null) }
+    var localPool by remember { mutableStateOf<List<Task>>(emptyList()) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    val displayPool = remember(pool) { pool.sortedBy { it.orderIndex } }
+    val sortedPool = remember(pool) { pool.sortedBy { it.orderIndex } }
+    LaunchedEffect(sortedPool, draggingTaskId) {
+        // While a card is being dragged the in-memory order is authoritative.
+        // This prevents an asynchronous Room update from flashing the old order back on screen.
+        if (draggingTaskId == null) localPool = sortedPool
+    }
+    val displayPool = if (draggingTaskId != null) localPool else sortedPool
     val tomorrowTask = remember(displayPool, queuedTomorrowId) {
         displayPool.firstOrNull { it.id == queuedTomorrowId }
             ?: displayPool.firstOrNull()
+    }
+
+    fun swapLocalPool(taskId: Long, delta: Int): Boolean {
+        val from = localPool.indexOfFirst { it.id == taskId }
+        if (from < 0) return false
+        val to = from + delta
+        if (to !in localPool.indices) return false
+        val reordered = localPool.toMutableList()
+        val temp = reordered[from]
+        reordered[from] = reordered[to]
+        reordered[to] = temp
+        localPool = reordered
+        return true
     }
 
     suspend fun showUndoSnackbar(message: String, undo: () -> Unit) {
@@ -128,15 +151,29 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 hostState = snackbarHostState,
                 modifier = Modifier.padding(bottom = 12.dp)
             ) { data ->
-                Snackbar(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 28.dp),
                     shape = RoundedCornerShape(14.dp),
-                    action = {
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    shadowElevation = 6.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            data.visuals.message,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         data.visuals.actionLabel?.let { label ->
                             TextButton(
                                 onClick = { data.performAction() },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
                                 colors = ButtonDefaults.textButtonColors(
                                     contentColor = MaterialTheme.colorScheme.inversePrimary
                                 )
@@ -145,8 +182,6 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             }
                         }
                     }
-                ) {
-                    Text(data.visuals.message)
                 }
             }
         },
@@ -156,10 +191,35 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             }
         }
     ) { padding ->
+        val backSwipeThresholdPx = with(LocalDensity.current) { 42.dp.toPx() }
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
+                .pointerInput(onBack) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        var totalX = 0f
+                        var totalY = 0f
+                        var triggered = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            if (!change.isConsumed && !triggered) {
+                                val delta = change.position - change.previousPosition
+                                totalX += delta.x
+                                totalY += delta.y
+                                if (totalX <= -backSwipeThresholdPx &&
+                                    kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.15f
+                                ) {
+                                    triggered = true
+                                    onBack()
+                                }
+                            }
+                        }
+                    }
+                }
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -188,7 +248,10 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         onDelete = { deleteWithUndo(task) },
                         onComplete = { completeWithUndo(task) },
                         dragHint = "Long-press and drag down to return to backlog",
-                        onDragDown = { viewModel.moveBonusToBacklog(task.id) },
+                        onDragDown = {
+                            viewModel.moveBonusToBacklog(task.id)
+                            true
+                        },
                         onDraggingStateChanged = { isDragging ->
                             draggingTaskId = if (isDragging) task.id else null
                         }
@@ -224,7 +287,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 val itemModifier = if (draggingTaskId == task.id) {
                     Modifier.zIndex(10f)
                 } else {
-                    Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 300))
+                    Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 170))
                 }
 
                 SwipeableTaskRow(
@@ -245,25 +308,29 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         "Long-press and drag up or down to reorder"
                     },
                     onDragUp = {
-                        if (index == 0) {
-                            viewModel.replaceTodayWith(task.id)
-                        } else {
-                            val ids = displayPool.map { it.id }.toMutableList()
-                            ids[index - 1] = task.id
-                            ids[index] = displayPool[index - 1].id
-                            viewModel.reorderPool(ids)
+                        val currentIndex = localPool.indexOfFirst { it.id == task.id }
+                        when {
+                            currentIndex == 0 -> {
+                                viewModel.replaceTodayWith(task.id)
+                                true
+                            }
+                            currentIndex > 0 -> swapLocalPool(task.id, -1)
+                            else -> false
                         }
                     },
-                    onDragDown = if (index < displayPool.lastIndex) {
-                        {
-                            val ids = displayPool.map { it.id }.toMutableList()
-                            ids[index + 1] = task.id
-                            ids[index] = displayPool[index + 1].id
-                            viewModel.reorderPool(ids)
-                        }
-                    } else null,
+                    onDragDown = {
+                        swapLocalPool(task.id, +1)
+                    },
                     onDraggingStateChanged = { isDragging ->
-                        draggingTaskId = if (isDragging) task.id else null
+                        if (isDragging) {
+                            localPool = sortedPool
+                            draggingTaskId = task.id
+                        } else {
+                            if (draggingTaskId == task.id && localPool.isNotEmpty()) {
+                                viewModel.reorderPool(localPool.map { it.id })
+                            }
+                            draggingTaskId = null
+                        }
                     }
                 )
             }
@@ -277,6 +344,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             defaultReminderHour = viewModel.settings.defaultReminderHour,
             defaultReminderMinute = viewModel.settings.defaultReminderMinute,
             onAddGroup = { viewModel.addCustomGroup(it) },
+            onRemoveGroup = { viewModel.removeCustomGroup(it) },
             onDismiss = { showAdd = false },
             onSave = { title, group, priority, comment, remOn, h, m ->
                 viewModel.addTask(
@@ -302,6 +370,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             defaultReminderHour = viewModel.settings.defaultReminderHour,
             defaultReminderMinute = viewModel.settings.defaultReminderMinute,
             onAddGroup = { viewModel.addCustomGroup(it) },
+            onRemoveGroup = { viewModel.removeCustomGroup(it) },
             onDismiss = { editing = null },
             onSave = { title, group, priority, comment, remOn, h, m ->
                 viewModel.updateTask(
@@ -343,8 +412,8 @@ private fun SwipeableTaskRow(
     modifier: Modifier = Modifier,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
-    onDragUp: (() -> Unit)? = null,
-    onDragDown: (() -> Unit)? = null,
+    onDragUp: (() -> Boolean)? = null,
+    onDragDown: (() -> Boolean)? = null,
     onDraggingStateChanged: (Boolean) -> Unit = {}
 ) {
     var rowDragging by remember(task.id) { mutableStateOf(false) }
@@ -423,8 +492,8 @@ private fun TaskRow(
     onEdit: () -> Unit,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
-    onDragUp: (() -> Unit)? = null,
-    onDragDown: (() -> Unit)? = null,
+    onDragUp: (() -> Boolean)? = null,
+    onDragDown: (() -> Boolean)? = null,
     onDraggingChanged: (Boolean) -> Unit = {}
 ) {
     val color = remember(task.colorHex) {
@@ -499,13 +568,17 @@ private fun TaskRow(
                             }
 
                             if (dragOffset <= -swapDistance && currentDragUp != null) {
-                                currentDragUp?.invoke()
-                                // The item's layout position moves one row after reordering.
-                                // Compensate by one row so the card stays under the finger.
-                                dragOffset += swapDistance
+                                val didSwap = currentDragUp?.invoke() == true
+                                if (didSwap) {
+                                    // Re-arm the threshold from the task's new row. The next swap
+                                    // can happen only after its top crosses the next neighbour's top.
+                                    dragOffset += swapDistance
+                                }
                             } else if (dragOffset >= swapDistance && currentDragDown != null) {
-                                currentDragDown?.invoke()
-                                dragOffset -= swapDistance
+                                val didSwap = currentDragDown?.invoke() == true
+                                if (didSwap) {
+                                    dragOffset -= swapDistance
+                                }
                             }
                         }
                     }

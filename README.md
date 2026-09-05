@@ -84,5 +84,5 @@ the older build once before installing v1.2.1. From v1.2.1 onward, keep the incl
 - The launcher icon is still a placeholder.
 - The project does not include a Gradle wrapper; GitHub Actions installs Gradle 8.7 explicitly.
 
-## Version 1.4.0
-See `FIXES_1.4.0.md` for the latest interaction and Undo changes.
+## Version 1.5.0
+See `FIXES_1.5.0.md` for the latest interaction and Undo changes.

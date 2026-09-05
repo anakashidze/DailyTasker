@@ -8,6 +8,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,12 +53,19 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val navController = rememberNavController()
-                NavHost(navController = navController, startDestination = "home") {
+                NavHost(
+                    navController = navController,
+                    startDestination = "home",
+                    enterTransition = { fadeIn(animationSpec = tween(80)) },
+                    exitTransition = { fadeOut(animationSpec = tween(60)) },
+                    popEnterTransition = { fadeIn(animationSpec = tween(80)) },
+                    popExitTransition = { fadeOut(animationSpec = tween(60)) }
+                ) {
                     composable("home") {
                         HomeScreen(
                             viewModel = viewModel,
-                            onOpenList = { navController.navigate("list") },
-                            onOpenSettings = { navController.navigate("settings") }
+                            onOpenList = { navController.navigate("list") { launchSingleTop = true } },
+                            onOpenSettings = { navController.navigate("settings") { launchSingleTop = true } }
                         )
                     }
                     composable("list") {

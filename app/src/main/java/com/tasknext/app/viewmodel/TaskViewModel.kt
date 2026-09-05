@@ -106,6 +106,19 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         _taskGroups.value = TaskGroups.builtIns + custom
     }
 
+    fun removeCustomGroup(group: TaskGroupDefinition) = viewModelScope.launch {
+        // Built-in groups are intentionally immutable and can never be removed.
+        if (group.builtIn || TaskGroups.builtIns.any { it.name.equals(group.name, ignoreCase = true) }) return@launch
+
+        val defaultGroup = TaskGroups.default
+        repo.reassignRemovedGroup(group.name, defaultGroup)
+
+        val custom = settings.customGroups
+            .filterNot { it.name.equals(group.name, ignoreCase = true) }
+        settings.customGroups = custom
+        _taskGroups.value = TaskGroups.builtIns + custom
+    }
+
     fun deleteHistoryRecord(id: Long) = viewModelScope.launch {
         repo.deleteHistoryRecord(id)
     }

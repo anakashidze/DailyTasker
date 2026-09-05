@@ -57,7 +57,7 @@ fun HomeScreen(
         } ?: Color(0xFF22C55E)
     }
     val bgTint by animateFloatAsState(if (dayComplete) 0.14f else 0.06f, tween(500), label = "bg")
-    val swipeThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
+    val swipeThresholdPx = with(LocalDensity.current) { 42.dp.toPx() }
 
     Box(
         modifier = Modifier

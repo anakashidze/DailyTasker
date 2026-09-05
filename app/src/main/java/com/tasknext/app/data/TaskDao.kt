@@ -33,6 +33,21 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isArchived = 0 ORDER BY orderIndex ASC")
     suspend fun getAllOnce(): List<Task>
 
+    /** Reassign every task using a removed custom group to the immutable Task group. */
+    @Query("""
+        UPDATE tasks
+        SET colorHex = :defaultColorHex,
+            colorName = :defaultGroupName,
+            groupIcon = :defaultIconKey
+        WHERE colorName = :removedGroupName
+    """)
+    suspend fun reassignRemovedGroup(
+        removedGroupName: String,
+        defaultColorHex: String,
+        defaultGroupName: String,
+        defaultIconKey: String
+    )
+
     /**
      * Completion is one atomic database operation: save the History snapshot and
      * archive the live task so active-list queries can no longer return it.
