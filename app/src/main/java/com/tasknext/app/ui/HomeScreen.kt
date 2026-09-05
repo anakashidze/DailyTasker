@@ -94,7 +94,7 @@ fun HomeScreen(
 
             if (bonusTasks.isNotEmpty()) {
                 Text(
-                    "also today",
+                    "Also today",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

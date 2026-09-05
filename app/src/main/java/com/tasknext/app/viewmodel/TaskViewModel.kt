@@ -62,6 +62,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun addTask(
         title: String,
         colorHex: String,
+        colorName: String,
         priority: Priority,
         comment: String,
         reminderEnabled: Boolean,
@@ -72,6 +73,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             Task(
                 title = title,
                 colorHex = colorHex,
+                colorName = colorName,
                 priority = priority,
                 comment = comment,
                 reminderEnabled = reminderEnabled,
@@ -101,6 +103,37 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun activateBonusFromPool(taskId: Long) = viewModelScope.launch {
         repo.activateBonusTask(taskId)
         repo.getTask(taskId)?.let { syncTaskReminder(it) }
+    }
+
+    fun moveBonusToBacklog(taskId: Long) = viewModelScope.launch {
+        repo.moveBonusToBacklog(taskId)
+        NotificationScheduler.cancel(getApplication(), taskId)
+    }
+
+    fun replaceTodayWith(taskId: Long) = viewModelScope.launch {
+        val previousToday = mandatoryTask.value
+        repo.replaceMandatoryWith(taskId)
+        previousToday?.let { NotificationScheduler.cancel(getApplication(), it.id) }
+        repo.getTask(taskId)?.let { syncTaskReminder(it) }
+        _dayComplete.value = false
+        _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+    }
+
+    fun completeFromList(taskId: Long) = viewModelScope.launch {
+        NotificationScheduler.cancel(getApplication(), taskId)
+        val previousSlot = repo.completeFromList(taskId)
+        if (previousSlot == 0) {
+            _dayComplete.value = true
+            if (settings.autoFillNextTask) {
+                repo.suggestNext()?.let { repo.setTomorrowTask(it.id) }
+                _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+                _showTomorrowPicker.value = false
+            } else {
+                _showTomorrowPicker.value = true
+            }
+        } else {
+            _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        }
     }
 
     fun completeMandatory(taskId: Long) = viewModelScope.launch {

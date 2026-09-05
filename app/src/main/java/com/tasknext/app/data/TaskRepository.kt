@@ -43,11 +43,7 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
                 dao.update(it.copy(orderIndex = index))
             }
         }
-
-        // If tomorrow was explicitly chosen, moving the queue changes which task is last/next.
-        if (settings.queuedTomorrowTaskId != -1L) {
-            settings.queuedTomorrowTaskId = orderedIds.firstOrNull() ?: -1L
-        }
+        // An explicitly selected tomorrow task follows the task itself, not its visual position.
     }
 
     /** Pulls a bonus (non-mandatory) task from the pool into slot 1 or 2. */
@@ -127,7 +123,7 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     }
 
     /**
-     * Queues a pool task for tomorrow and makes it the bottom/next item in the backlog,
+     * Queues a pool task for tomorrow and makes it the top/next item in the backlog,
      * keeping the visible queue and the stored tomorrow choice consistent.
      */
     suspend fun setTomorrowTask(taskId: Long) {
@@ -145,9 +141,51 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         settings.queuedTomorrowTaskId = taskId
     }
 
+
+    /** Swap a backlog task into today's mandatory slot while returning the previous Today task to the backlog. */
+    suspend fun replaceMandatoryWith(taskId: Long) {
+        val selected = dao.getById(taskId) ?: return
+        if (selected.slot != null || selected.isArchived) return
+
+        val selectedOrder = selected.orderIndex
+        val current = dao.getAllOnce().firstOrNull { it.slot == 0 && !it.isArchived }
+
+        current?.let {
+            dao.update(it.copy(slot = null, orderIndex = selectedOrder))
+        }
+        dao.update(selected.copy(slot = 0))
+
+        if (settings.queuedTomorrowTaskId == taskId) {
+            settings.queuedTomorrowTaskId = -1L
+        }
+        settings.dayCompletedEpochDay = -1L
+    }
+
+    /** Removes Bonus status without deleting the task; the task returns to its existing backlog position. */
+    suspend fun moveBonusToBacklog(taskId: Long) {
+        val task = dao.getById(taskId) ?: return
+        if (task.slot == null || task.slot == 0 || task.isArchived) return
+        dao.update(task.copy(slot = null))
+    }
+
+    /** Marks any task complete from the task list without first making a backlog task Today's task. */
+    suspend fun completeFromList(taskId: Long): Int? {
+        val task = dao.getById(taskId) ?: return null
+        val previousSlot = task.slot
+        logCompletion(task)
+        moveTaskToBack(task)
+        if (previousSlot == 0) {
+            settings.dayCompletedEpochDay = todayEpochDay()
+        }
+        if (settings.queuedTomorrowTaskId == taskId) {
+            settings.queuedTomorrowTaskId = -1L
+        }
+        return previousSlot
+    }
+
     fun queuedTomorrowTaskId(): Long = settings.queuedTomorrowTaskId
 
-    /** Suggests the bottom/next item in the backlog queue. */
+    /** Suggests the top/next item in the backlog queue. */
     suspend fun suggestNext(): Task? = dao.getAllOnce()
         .asSequence()
         .filter { it.slot == null && !it.isArchived }

@@ -25,12 +25,13 @@ fun SettingsScreen(
 ) {
     val settings = viewModel.settings
     var notificationsEnabled by remember { mutableStateOf(settings.notificationsEnabled) }
-    var defaultHour by remember { mutableStateOf(settings.defaultReminderHour) }
-    var defaultMinute by remember { mutableStateOf(settings.defaultReminderMinute) }
-    var snoozeMinutes by remember { mutableStateOf(settings.snoozeMinutes.coerceIn(1, 24 * 60)) }
+    var defaultHour by remember { mutableIntStateOf(settings.defaultReminderHour) }
+    var defaultMinute by remember { mutableIntStateOf(settings.defaultReminderMinute) }
+    var snoozeText by remember { mutableStateOf(settings.snoozeMinutes.coerceIn(1, 24 * 60).toString()) }
     var autoFill by remember { mutableStateOf(settings.autoFillNextTask) }
     var darkTheme by remember { mutableStateOf(settings.darkTheme) }
     var groupByDay by remember { mutableStateOf(settings.groupHistoryByDay) }
+    var showDefaultTimePicker by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -64,47 +65,29 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = defaultHour.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.coerceIn(0, 23)?.let {
-                            defaultHour = it
-                            viewModel.setDefaultReminderHour(it)
-                        }
-                    },
-                    label = { Text("Hour") },
-                    modifier = Modifier.width(100.dp),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-                OutlinedTextField(
-                    value = defaultMinute.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.coerceIn(0, 59)?.let {
-                            defaultMinute = it
-                            viewModel.setDefaultReminderMinute(it)
-                        }
-                    },
-                    label = { Text("Minute") },
-                    modifier = Modifier.width(100.dp),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
+            OutlinedButton(onClick = { showDefaultTimePicker = true }) {
+                Text("%02d:%02d".format(defaultHour, defaultMinute))
             }
 
             Text("Snooze duration (minutes)")
             OutlinedTextField(
-                value = snoozeMinutes.toString(),
+                value = snoozeText,
                 onValueChange = { value ->
-                    value.toIntOrNull()?.coerceIn(1, 24 * 60)?.let {
-                        snoozeMinutes = it
-                        viewModel.setSnoozeMinutes(it)
+                    if (value.all { it.isDigit() } && value.length <= 4) {
+                        snoozeText = value
+                        value.toIntOrNull()?.coerceIn(1, 24 * 60)?.let {
+                            viewModel.setSnoozeMinutes(it)
+                        }
                     }
                 },
-                modifier = Modifier.width(110.dp),
+                modifier = Modifier.width(120.dp),
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                supportingText = {
+                    if (snoozeText.isBlank()) {
+                        Text("Enter 1–1440")
+                    }
+                }
             )
 
             SettingsSwitchRow("Auto-pick the next backlog task for tomorrow", autoFill) {
@@ -127,6 +110,21 @@ fun SettingsScreen(
                 Text("View completed task history")
             }
         }
+    }
+
+    if (showDefaultTimePicker) {
+        SimpleTimePickerDialog(
+            initialHour = defaultHour,
+            initialMinute = defaultMinute,
+            onDismiss = { showDefaultTimePicker = false },
+            onConfirm = { hour, minute ->
+                defaultHour = hour
+                defaultMinute = minute
+                viewModel.setDefaultReminderHour(hour)
+                viewModel.setDefaultReminderMinute(minute)
+                showDefaultTimePicker = false
+            }
+        )
     }
 }
 
