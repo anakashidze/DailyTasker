@@ -1,6 +1,9 @@
 package com.tasknext.app.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,23 +21,29 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalDensity
 import com.tasknext.app.data.Priority
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
-import kotlin.math.abs
 
 private val priorityLow = Color(0xFFDDEBFF)
 private val priorityMedium = Color(0xFFFFF1B8)
 private val priorityHigh = Color(0xFFFFD7D7)
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalMaterialApi::class,
+    ExperimentalFoundationApi::class
+)
 @Composable
 fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val pool by viewModel.pool.collectAsState()
@@ -44,7 +53,6 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Task?>(null) }
 
-    // Backlog is now shown in its real queue order: the first item is next.
     val displayPool = remember(pool) { pool.sortedBy { it.orderIndex } }
     val tomorrowTask = remember(displayPool, queuedTomorrowId) {
         displayPool.firstOrNull { it.id == queuedTomorrowId }
@@ -110,7 +118,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 Column {
                     SectionTitle("Backlog")
                     Text(
-                        "Top item is next. Drag the handle to reorder; drag the first item upward to make it Today.",
+                        "Top item is next. Hold the drag handle to reorder; drag the first item upward to make it Today.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -132,6 +140,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 val canMakeBonus = bonusTasks.size < 2 && task.id != queuedTomorrowId
 
                 SwipeableTaskRow(
+                    modifier = Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 220)),
                     task = task,
                     tag = if (isTomorrow) {
                         if (queuedTomorrowId != -1L) "TOMORROW" else "NEXT"
@@ -225,6 +234,7 @@ private fun SwipeableTaskRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onComplete: () -> Unit,
+    modifier: Modifier = Modifier,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
     onDragUp: (() -> Unit)? = null,
@@ -232,40 +242,51 @@ private fun SwipeableTaskRow(
 ) {
     var askDelete by remember(task.id) { mutableStateOf(false) }
     var askComplete by remember(task.id) { mutableStateOf(false) }
+    var rowDragging by remember(task.id) { mutableStateOf(false) }
 
     val dismissState = rememberDismissState(
         confirmStateChange = { value ->
-            when (value) {
-                DismissValue.DismissedToStart -> askDelete = true
-                DismissValue.DismissedToEnd -> askComplete = true
-                DismissValue.Default -> Unit
+            if (!rowDragging) {
+                when (value) {
+                    DismissValue.DismissedToStart -> askDelete = true
+                    DismissValue.DismissedToEnd -> askComplete = true
+                    DismissValue.Default -> Unit
+                }
             }
-            false // Always snap back; the confirmed action changes the data instead.
+            false
         }
     )
 
     SwipeToDismiss(
+        modifier = modifier,
         state = dismissState,
         directions = setOf(DismissDirection.StartToEnd, DismissDirection.EndToStart),
         background = {
+            // Do not draw an action layer while idle or while the drag handle is active.
+            // Previously the red "Delete" layer existed permanently underneath a translucent row,
+            // which made Delete/Edit-like silhouettes visible through the task card.
             val direction = dismissState.dismissDirection
-            val isComplete = direction == DismissDirection.StartToEnd
-            val bg = if (isComplete) Color(0xFFE1F5E7) else Color(0xFFFFE2E2)
-            val icon = if (isComplete) Icons.Default.Check else Icons.Default.Delete
-            val label = if (isComplete) "Complete" else "Delete"
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(bg, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = if (isComplete) Arrangement.Start else Arrangement.End
-            ) {
-                if (!isComplete) Text(label, fontWeight = FontWeight.SemiBold)
-                if (!isComplete) Spacer(Modifier.width(8.dp))
-                Icon(icon, contentDescription = label)
-                if (isComplete) Spacer(Modifier.width(8.dp))
-                if (isComplete) Text(label, fontWeight = FontWeight.SemiBold)
+            if (direction != null && !rowDragging) {
+                val isComplete = direction == DismissDirection.StartToEnd
+                val bg = if (isComplete) Color(0xFFE1F5E7) else Color(0xFFFFE2E2)
+                val icon = if (isComplete) Icons.Default.Check else Icons.Default.Delete
+                val label = if (isComplete) "Complete" else "Delete"
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(bg, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (isComplete) Arrangement.Start else Arrangement.End
+                ) {
+                    if (!isComplete) Text(label, fontWeight = FontWeight.SemiBold)
+                    if (!isComplete) Spacer(Modifier.width(8.dp))
+                    Icon(icon, contentDescription = label)
+                    if (isComplete) Spacer(Modifier.width(8.dp))
+                    if (isComplete) Text(label, fontWeight = FontWeight.SemiBold)
+                }
+            } else {
+                Box(Modifier.fillMaxSize())
             }
         },
         dismissContent = {
@@ -276,7 +297,8 @@ private fun SwipeableTaskRow(
                 onMakeBonus = onMakeBonus,
                 dragHint = dragHint,
                 onDragUp = onDragUp,
-                onDragDown = onDragDown
+                onDragDown = onDragDown,
+                onDraggingChanged = { rowDragging = it }
             )
         }
     )
@@ -332,7 +354,8 @@ private fun TaskRow(
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
     onDragUp: (() -> Unit)? = null,
-    onDragDown: (() -> Unit)? = null
+    onDragDown: (() -> Unit)? = null,
+    onDraggingChanged: (Boolean) -> Unit = {}
 ) {
     val color = remember(task.colorHex) {
         try {
@@ -341,7 +364,11 @@ private fun TaskRow(
             Color.Gray
         }
     }
-    val thresholdPx = with(LocalDensity.current) { 54.dp.toPx() }
+
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val thresholdPx = with(density) { 58.dp.toPx() }
+    val dragElevationPx = with(density) { 8.dp.toPx() }
     var dragOffset by remember(task.id) { mutableFloatStateOf(0f) }
     var dragging by remember(task.id) { mutableStateOf(false) }
     val currentDragUp by rememberUpdatedState(onDragUp)
@@ -350,83 +377,108 @@ private fun TaskRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { translationY = if (dragging) dragOffset * 0.25f else 0f }
+            .zIndex(if (dragging) 2f else 0f)
+            .graphicsLayer {
+                translationY = if (dragging) dragOffset * 0.22f else 0f
+                scaleX = if (dragging) 1.015f else 1f
+                scaleY = if (dragging) 1.015f else 1f
+                shadowElevation = if (dragging) dragElevationPx else 0f
+                shape = RoundedCornerShape(12.dp)
+            }
             .background(color.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-            .padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             Modifier
                 .width(5.dp)
-                .height(36.dp)
+                .height(40.dp)
                 .background(color, RoundedCornerShape(3.dp))
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(7.dp))
 
+        // Left edge is reserved exclusively for dragging. It is deliberately not clickable for edit.
         if (onDragUp != null || onDragDown != null) {
             Icon(
                 Icons.Default.DragHandle,
                 contentDescription = dragHint ?: "Drag to move task",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .pointerInput(task.id) {
                         detectDragGesturesAfterLongPress(
                             onDragStart = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 dragging = true
+                                onDraggingChanged(true)
                                 dragOffset = 0f
                             },
                             onDragCancel = {
                                 dragging = false
+                                onDraggingChanged(false)
                                 dragOffset = 0f
                             },
                             onDragEnd = {
                                 dragging = false
+                                onDraggingChanged(false)
                                 dragOffset = 0f
                             }
-                        ) { _, dragAmount ->
+                        ) { change, dragAmount ->
+                            change.consume()
                             dragOffset += dragAmount.y
+
                             if (dragOffset <= -thresholdPx && currentDragUp != null) {
                                 currentDragUp?.invoke()
-                                dragOffset = 0f
+                                // Keep part of the finger movement instead of snapping the dragged
+                                // card completely back to zero after each swap.
+                                dragOffset += thresholdPx
                             } else if (dragOffset >= thresholdPx && currentDragDown != null) {
                                 currentDragDown?.invoke()
-                                dragOffset = 0f
+                                dragOffset -= thresholdPx
                             }
                         }
                     }
             )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(2.dp))
         }
 
-        Column(Modifier.weight(1f)) {
+        // Only the center content opens Edit. Drag handle (left) and Bonus star (right)
+        // remain independent touch targets.
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onEdit)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
             Text(
-                task.title,
+                text = task.title,
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(4.dp))
             PriorityPill(task.priority)
         }
 
-        if (onMakeBonus != null) {
-            IconButton(onClick = onMakeBonus, modifier = Modifier.size(38.dp)) {
-                Icon(
-                    Icons.Default.StarBorder,
-                    contentDescription = "Make bonus today",
-                    modifier = Modifier.size(21.dp)
-                )
+        // Fixed trailing area. The weighted title column must wrap/ellipsize before it can
+        // reach these controls, so NEXT/TOMORROW/BONUS/TODAY never overlap the title.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (tag != null) {
+                StatusPill(tag)
             }
-        }
 
-        if (tag != null) {
-            StatusPill(tag)
-            Spacer(Modifier.width(4.dp))
-        }
-
-        IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(21.dp))
+            if (onMakeBonus != null) {
+                IconButton(onClick = onMakeBonus, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        Icons.Default.StarBorder,
+                        contentDescription = "Make bonus today",
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -438,7 +490,7 @@ private fun StatusPill(tag: String) {
         shape = RoundedCornerShape(50)
     ) {
         Text(
-            tag,
+            text = tag,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,

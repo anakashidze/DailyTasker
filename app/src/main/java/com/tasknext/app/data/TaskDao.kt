@@ -33,6 +33,22 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isArchived = 0 ORDER BY orderIndex ASC")
     suspend fun getAllOnce(): List<Task>
 
+    /**
+     * Completion is one atomic database operation: save the History snapshot and
+     * archive the live task so active-list queries can no longer return it.
+     */
+    @Transaction
+    suspend fun archiveAsCompleted(task: Task, log: CompletionLog) {
+        insertLog(log)
+        update(
+            task.copy(
+                slot = null,
+                reminderEnabled = false,
+                isArchived = true
+            )
+        )
+    }
+
     // History
     @Insert
     suspend fun insertLog(log: CompletionLog)

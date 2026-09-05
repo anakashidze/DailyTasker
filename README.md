@@ -54,13 +54,13 @@ The workflow also runs on pushes to the `main` branch.
 
 ## Debug signing
 
-Version 1.2.0 includes a stable testing-only debug keystore in the project so future GitHub
+Version 1.2.1 includes a stable testing-only debug keystore in the project so future GitHub
 builds are signed consistently and can update one another in place. It is not a production
 Play Store signing key.
 
 If the APK currently installed on the phone came from an earlier GitHub runner, it may have
 been signed by a different temporary debug key. In that case Android will require uninstalling
-the older build once before installing v1.2.0. From v1.2.0 onward, keep the included
+the older build once before installing v1.2.1. From v1.2.1 onward, keep the included
 `app/debug.keystore` unchanged so subsequent testing builds can update normally.
 
 ## Important testing points

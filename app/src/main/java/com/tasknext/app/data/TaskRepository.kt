@@ -87,30 +87,41 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
 
     fun isDayComplete(): Boolean = settings.dayCompletedEpochDay == todayEpochDay()
 
-    /** Completes the mandatory task, logs it, and moves it to the far end of the backlog. */
+    /**
+     * Completes the mandatory task. A completed task is terminal: it is logged to
+     * History and archived so it disappears from Today, Bonus and Backlog lists.
+     */
     suspend fun completeMandatory(taskId: Long) {
         val task = dao.getById(taskId) ?: return
-        logCompletion(task)
-        moveTaskToBack(task)
+        if (task.isArchived) return
+        logAndArchiveCompletion(task)
         settings.dayCompletedEpochDay = todayEpochDay()
     }
 
-    /** Completes a bonus task and moves it to the far end of the backlog. */
+    /** Completes a bonus task and removes it from every active task list. */
     suspend fun completeBonus(taskId: Long) {
         val task = dao.getById(taskId) ?: return
-        logCompletion(task)
-        moveTaskToBack(task)
+        if (task.isArchived) return
+        logAndArchiveCompletion(task)
     }
 
-    private suspend fun logCompletion(task: Task) {
-        dao.insertLog(
-            CompletionLog(
-                taskId = task.id,
-                titleSnapshot = task.title,
-                colorHexSnapshot = task.colorHex,
-                completedAtEpochMillis = System.currentTimeMillis()
-            )
+    /**
+     * Single completion invariant used by every UI entry point. The Room DAO
+     * writes History and archives the task in one database transaction.
+     */
+    private suspend fun logAndArchiveCompletion(task: Task) {
+        val log = CompletionLog(
+            taskId = task.id,
+            titleSnapshot = task.title,
+            colorHexSnapshot = task.colorHex,
+            completedAtEpochMillis = System.currentTimeMillis()
         )
+
+        dao.archiveAsCompleted(task, log)
+
+        if (settings.queuedTomorrowTaskId == task.id) {
+            settings.queuedTomorrowTaskId = -1L
+        }
     }
 
     private suspend fun moveTaskToBack(task: Task) {
@@ -168,17 +179,17 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         dao.update(task.copy(slot = null))
     }
 
-    /** Marks any task complete from the task list without first making a backlog task Today's task. */
+    /**
+     * Marks any task complete from the task list without first making a backlog
+     * task Today's task. Completed tasks are removed from all active lists.
+     */
     suspend fun completeFromList(taskId: Long): Int? {
         val task = dao.getById(taskId) ?: return null
+        if (task.isArchived) return null
         val previousSlot = task.slot
-        logCompletion(task)
-        moveTaskToBack(task)
+        logAndArchiveCompletion(task)
         if (previousSlot == 0) {
             settings.dayCompletedEpochDay = todayEpochDay()
-        }
-        if (settings.queuedTomorrowTaskId == taskId) {
-            settings.queuedTomorrowTaskId = -1L
         }
         return previousSlot
     }

@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Task::class, CompletionLog::class], version = 2, exportSchema = false)
+@Database(entities = [Task::class, CompletionLog::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
 
@@ -35,6 +35,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Older TaskNext versions logged completions but returned the same task to
+         * the active backlog. Under the new terminal-completion rule, any task that
+         * already has a History record must no longer appear in active lists.
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    UPDATE tasks
+                    SET isArchived = 1,
+                        slot = NULL,
+                        reminderEnabled = 0
+                    WHERE id IN (SELECT DISTINCT taskId FROM completion_log)
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -42,7 +61,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "tasknext.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }
