@@ -21,7 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.zIndex
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -378,13 +378,13 @@ private fun TaskRow(
         modifier = Modifier
             .fillMaxWidth()
             .zIndex(if (dragging) 2f else 0f)
-            .graphicsLayer {
-                translationY = if (dragging) dragOffset * 0.22f else 0f
-                scaleX = if (dragging) 1.015f else 1f
-                scaleY = if (dragging) 1.015f else 1f
-                shadowElevation = if (dragging) dragElevationPx else 0f
+            .graphicsLayer(
+                translationY = if (dragging) dragOffset * 0.22f else 0f,
+                scaleX = if (dragging) 1.015f else 1f,
+                scaleY = if (dragging) 1.015f else 1f,
+                shadowElevation = if (dragging) dragElevationPx else 0f,
                 shape = RoundedCornerShape(12.dp)
-            }
+            )
             .background(color.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
             .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
