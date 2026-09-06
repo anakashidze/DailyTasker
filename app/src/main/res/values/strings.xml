@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">TaskNext</string>
+    <string name="today_widget_description">Shows your current TaskNext Today task</string>
 </resources>
 

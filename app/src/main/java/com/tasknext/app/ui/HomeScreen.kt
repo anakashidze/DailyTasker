@@ -1,6 +1,5 @@
 package com.tasknext.app.ui
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -80,13 +79,13 @@ fun HomeScreen(
 
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
     var activeDirection by remember { mutableStateOf<HomeSwipeDirection?>(null) }
-    val horizontalOffset = remember { Animatable(0f) }
-    val verticalOffset = remember { Animatable(0f) }
-    val pullOffset = remember { Animatable(0f) }
+    var horizontalOffset by remember { mutableFloatStateOf(0f) }
+    var verticalOffset by remember { mutableFloatStateOf(0f) }
+    var pullOffset by remember { mutableFloatStateOf(0f) }
 
     val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
     val heightPx = screenSize.height.toFloat().coerceAtLeast(1f)
-    val pullProgress = (pullOffset.value / pullToAddThresholdPx).coerceIn(0f, 1f)
+    val pullProgress = (pullOffset / pullToAddThresholdPx).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
@@ -109,13 +108,19 @@ fun HomeScreen(
                     var direction: HomeSwipeDirection? = null
                     var pullHapticSent = false
 
+                    // Every gesture starts from a clean coordinate system. This also
+                    // prevents a previous partial swipe from influencing the next touch.
+                    horizontalOffset = 0f
+                    verticalOffset = 0f
+                    pullOffset = 0f
+
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Final)
                         val change = event.changes.firstOrNull() ?: break
                         if (!change.pressed) break
 
-                        // If a child has already claimed the gesture (for example the
-                        // small bonus-task list), don't turn it into page navigation.
+                        // If a child has already claimed the gesture (for example a
+                        // task action), keep page navigation out of the way.
                         if (direction == null && change.isConsumed) continue
 
                         val delta = change.position - change.previousPosition
@@ -138,25 +143,27 @@ fun HomeScreen(
                             if (direction != null) activeDirection = direction
                         }
 
+                        // These are ordinary Compose state writes rather than suspending
+                        // Animatable calls. That keeps the page attached 1:1 to the finger
+                        // and is legal inside the restricted pointer-event scope.
                         when (direction) {
                             HomeSwipeDirection.LEFT -> {
-                                horizontalOffset.snapTo(totalX.coerceIn(-widthPx, 0f))
+                                horizontalOffset = totalX.coerceIn(-widthPx, 0f)
                                 change.consume()
                             }
                             HomeSwipeDirection.RIGHT -> {
-                                horizontalOffset.snapTo(totalX.coerceIn(0f, widthPx))
+                                horizontalOffset = totalX.coerceIn(0f, widthPx)
                                 change.consume()
                             }
                             HomeSwipeDirection.UP -> {
-                                verticalOffset.snapTo(totalY.coerceIn(-heightPx, 0f))
+                                verticalOffset = totalY.coerceIn(-heightPx, 0f)
                                 change.consume()
                             }
                             HomeSwipeDirection.DOWN -> {
-                                // Pull-down is intentionally not a page transition. The
-                                // progress control fills with the finger and only fires on release.
+                                // Pull-down is a fill-to-arm action, not a page transition.
                                 val pulled = totalY.coerceAtLeast(0f)
                                     .coerceAtMost(pullToAddThresholdPx * 1.18f)
-                                pullOffset.snapTo(pulled)
+                                pullOffset = pulled
                                 if (pulled >= pullToAddThresholdPx && !pullHapticSent) {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     pullHapticSent = true
@@ -167,43 +174,34 @@ fun HomeScreen(
                         }
                     }
 
+                    // Commit only on release. If the page has not crossed the configured
+                    // swipe threshold it simply returns to Home. Navigation itself is
+                    // immediate so there is no post-release delay.
                     when (direction) {
                         HomeSwipeDirection.LEFT -> {
-                            val distance = abs(horizontalOffset.value)
+                            val distance = abs(horizontalOffset)
                             val commit = distance >= widthPx / 2f || distance >= swipeThresholdPx
-                            if (commit) {
-                                horizontalOffset.animateTo(-widthPx, tween(170))
-                                onOpenHistory()
-                            } else {
-                                horizontalOffset.animateTo(0f, tween(180))
-                                activeDirection = null
-                            }
+                            if (commit) onOpenHistory()
+                            horizontalOffset = 0f
+                            activeDirection = null
                         }
                         HomeSwipeDirection.RIGHT -> {
-                            val distance = abs(horizontalOffset.value)
+                            val distance = abs(horizontalOffset)
                             val commit = distance >= widthPx / 2f || distance >= swipeThresholdPx
-                            if (commit) {
-                                horizontalOffset.animateTo(widthPx, tween(170))
-                                onOpenList()
-                            } else {
-                                horizontalOffset.animateTo(0f, tween(180))
-                                activeDirection = null
-                            }
+                            if (commit) onOpenList()
+                            horizontalOffset = 0f
+                            activeDirection = null
                         }
                         HomeSwipeDirection.UP -> {
-                            val distance = abs(verticalOffset.value)
+                            val distance = abs(verticalOffset)
                             val commit = distance >= heightPx / 2f || distance >= swipeThresholdPx
-                            if (commit) {
-                                verticalOffset.animateTo(-heightPx, tween(170))
-                                onOpenSettings()
-                            } else {
-                                verticalOffset.animateTo(0f, tween(180))
-                                activeDirection = null
-                            }
+                            if (commit) onOpenSettings()
+                            verticalOffset = 0f
+                            activeDirection = null
                         }
                         HomeSwipeDirection.DOWN -> {
-                            val armed = pullOffset.value >= pullToAddThresholdPx
-                            pullOffset.animateTo(0f, tween(130))
+                            val armed = pullOffset >= pullToAddThresholdPx
+                            pullOffset = 0f
                             activeDirection = null
                             if (armed) showAdd = true
                         }
@@ -220,7 +218,7 @@ fun HomeScreen(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer { translationX = widthPx + horizontalOffset.value }
+                        .graphicsLayer { translationX = widthPx + horizontalOffset }
                 ) {
                     HistoryScreen(viewModel = viewModel, onBack = {})
                 }
@@ -229,7 +227,7 @@ fun HomeScreen(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer { translationX = -widthPx + horizontalOffset.value }
+                        .graphicsLayer { translationX = -widthPx + horizontalOffset }
                 ) {
                     TaskListScreen(viewModel = viewModel, onBack = {})
                 }
@@ -238,7 +236,7 @@ fun HomeScreen(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer { translationY = heightPx + verticalOffset.value }
+                        .graphicsLayer { translationY = heightPx + verticalOffset }
                 ) {
                     SettingsScreen(
                         viewModel = viewModel,
@@ -257,10 +255,10 @@ fun HomeScreen(
                 .fillMaxSize()
                 .graphicsLayer {
                     translationX = when (activeDirection) {
-                        HomeSwipeDirection.LEFT, HomeSwipeDirection.RIGHT -> horizontalOffset.value
+                        HomeSwipeDirection.LEFT, HomeSwipeDirection.RIGHT -> horizontalOffset
                         else -> 0f
                     }
-                    translationY = if (activeDirection == HomeSwipeDirection.UP) verticalOffset.value else 0f
+                    translationY = if (activeDirection == HomeSwipeDirection.UP) verticalOffset else 0f
                 }
                 .background(accent.copy(alpha = bgTint))
         ) {

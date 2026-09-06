@@ -52,7 +52,9 @@ private val groupIconChoices = listOf(
     "bike", "shopping", "study", "food", "travel", "pet", "book",
     "car", "calendar", "flag", "bolt", "place", "person", "phone",
     "mail", "build", "palette", "idea", "public", "bookmark", "label",
-    "folder", "schedule", "circle", "list"
+    "folder", "schedule", "circle", "list", "computer", "money",
+    "headphones", "camera", "lock", "search", "refresh", "share",
+    "send", "notifications"
 )
 
 private fun priorityLabel(priority: Priority): String =
@@ -133,6 +135,8 @@ fun AddEditTaskDialog(
         if (showNewGroup) {
             withFrameNanos { }
             groupNameFocusRequester.requestFocus()
+            withFrameNanos { }
+            keyboardController?.show()
         }
     }
 

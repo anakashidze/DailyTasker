@@ -40,6 +40,16 @@ fun groupIconVector(key: String): ImageVector = when (key) {
     "schedule" -> Icons.Default.Schedule
     "circle" -> Icons.Default.RadioButtonUnchecked
     "list" -> Icons.Default.ListAlt
+    "computer" -> Icons.Default.Computer
+    "money" -> Icons.Default.AttachMoney
+    "headphones" -> Icons.Default.Headphones
+    "camera" -> Icons.Default.CameraAlt
+    "lock" -> Icons.Default.Lock
+    "search" -> Icons.Default.Search
+    "refresh" -> Icons.Default.Refresh
+    "share" -> Icons.Default.Share
+    "send" -> Icons.Default.Send
+    "notifications" -> Icons.Default.Notifications
     else -> Icons.Default.CheckCircle
 }
 

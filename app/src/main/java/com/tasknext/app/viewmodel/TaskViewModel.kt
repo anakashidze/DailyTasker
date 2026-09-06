@@ -11,6 +11,7 @@ import com.tasknext.app.data.TaskGroupDefinition
 import com.tasknext.app.data.TaskGroups
 import com.tasknext.app.data.TaskRepository
 import com.tasknext.app.notifications.NotificationScheduler
+import com.tasknext.app.widget.TodayTaskWidget
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +54,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val _queuedTomorrowTaskId = MutableStateFlow(repo.queuedTomorrowTaskId())
     val queuedTomorrowTaskId: StateFlow<Long> = _queuedTomorrowTaskId
 
+    private fun refreshTodayWidget() = TodayTaskWidget.requestUpdate(getApplication())
+
     init {
         onAppResumed()
     }
@@ -62,6 +65,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         _dayComplete.value = repo.isDayComplete()
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         syncReminderAlarms()
+        refreshTodayWidget()
     }
 
     fun addTask(
@@ -89,11 +93,13 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             )
         )
         repo.getTask(id)?.let { syncTaskReminder(it) }
+        refreshTodayWidget()
     }
 
     fun updateTask(task: Task) = viewModelScope.launch {
         repo.updateTask(task)
         syncTaskReminder(task)
+        refreshTodayWidget()
     }
 
     fun addCustomGroup(group: TaskGroupDefinition) {
@@ -117,6 +123,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             .filterNot { it.name.equals(group.name, ignoreCase = true) }
         settings.customGroups = custom
         _taskGroups.value = TaskGroups.builtIns + custom
+        refreshTodayWidget()
     }
 
     fun deleteHistoryRecord(id: Long) = viewModelScope.launch {
@@ -131,12 +138,14 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         NotificationScheduler.cancel(getApplication(), task.id)
         repo.deleteTask(task.id)
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        refreshTodayWidget()
     }
 
     fun undoDelete(task: Task, previousQueuedTomorrowTaskId: Long) = viewModelScope.launch {
         repo.restoreDeletedTask(task, previousQueuedTomorrowTaskId)
         repo.getTask(task.id)?.let { syncTaskReminder(it) }
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        refreshTodayWidget()
     }
 
     fun undoCompletion(
@@ -149,6 +158,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         _dayComplete.value = repo.isDayComplete()
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         _showTomorrowPicker.value = false
+        refreshTodayWidget()
     }
 
     fun reorderPool(orderedIds: List<Long>) = viewModelScope.launch {
@@ -172,6 +182,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         newTodayId?.let { id -> repo.getTask(id)?.let { syncTaskReminder(it) } }
         _dayComplete.value = false
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        refreshTodayWidget()
     }
 
     fun replaceTodayWith(
@@ -184,6 +195,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repo.getTask(taskId)?.let { syncTaskReminder(it) }
         _dayComplete.value = false
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        refreshTodayWidget()
     }
 
     fun completeFromList(taskId: Long) = viewModelScope.launch {
@@ -201,6 +213,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         }
+        refreshTodayWidget()
     }
 
     fun completeMandatory(taskId: Long) = viewModelScope.launch {
@@ -215,11 +228,13 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             _showTomorrowPicker.value = true
         }
+        refreshTodayWidget()
     }
 
     fun completeBonus(taskId: Long) = viewModelScope.launch {
         NotificationScheduler.cancel(getApplication(), taskId)
         repo.completeBonus(taskId)
+        refreshTodayWidget()
     }
 
     fun dismissTomorrowPicker() {
