@@ -1,5 +1,7 @@
 package com.tasknext.app.ui
 
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -18,10 +20,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.tasknext.app.data.CompletionLog
 import com.tasknext.app.data.Priority
@@ -29,6 +34,7 @@ import com.tasknext.app.viewmodel.TaskViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +44,11 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var confirmClearAll by remember { mutableStateOf(false) }
     var selectedLog by remember { mutableStateOf<CompletionLog?>(null) }
     val swipeThresholdPx = with(LocalDensity.current) { 36.dp.toPx() }
+    val scope = rememberCoroutineScope()
+    var screenSize by remember { mutableStateOf(IntSize.Zero) }
+    var horizontalOffset by remember { mutableFloatStateOf(0f) }
+    var showingHomeUnderlay by remember { mutableStateOf(false) }
+    var releaseAnimating by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -66,30 +77,76 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .pointerInput(onBack) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        var totalX = 0f
-                        var totalY = 0f
-                        var triggered = false
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Final)
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
-                            if (!change.isConsumed && !triggered) {
-                                val delta = change.position - change.previousPosition
-                                totalX += delta.x
-                                totalY += delta.y
-                                if (totalX >= swipeThresholdPx && abs(totalX) > abs(totalY) * 1.10f) {
-                                    triggered = true
-                                    change.consume()
-                                    onBack()
+                .onSizeChanged { screenSize = it }
+        ) {
+            if (showingHomeUnderlay || horizontalOffset > 0f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationX = -screenSize.width.toFloat().coerceAtLeast(1f) + horizontalOffset }
+                ) {
+                    HomeScreen(
+                        viewModel = viewModel,
+                        onOpenList = {},
+                        onOpenHistory = {},
+                        onOpenSettings = {},
+                        gesturesEnabled = false
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationX = horizontalOffset }
+                    .then(
+                        if (!releaseAnimating) Modifier.pointerInput(onBack, screenSize) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                var totalX = 0f
+                                var totalY = 0f
+                                var tracking = false
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                    val change = event.changes.firstOrNull() ?: break
+                                    if (!change.pressed) break
+                                    if (!tracking && change.isConsumed) continue
+                                    val delta = change.position - change.previousPosition
+                                    totalX += delta.x
+                                    totalY += delta.y
+                                    if (!tracking) {
+                                        if (totalX >= 8f && abs(totalX) > abs(totalY) * 1.10f) {
+                                            tracking = true
+                                            showingHomeUnderlay = true
+                                        } else if (abs(totalY) > abs(totalX) * 1.10f) {
+                                            break
+                                        }
+                                    }
+                                    if (tracking) {
+                                        horizontalOffset = totalX.coerceIn(0f, screenSize.width.toFloat().coerceAtLeast(1f))
+                                        change.consume()
+                                    }
+                                }
+                                if (tracking) {
+                                    val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
+                                    val commit = horizontalOffset >= widthPx / 2f || horizontalOffset >= swipeThresholdPx
+                                    releaseAnimating = true
+                                    scope.launch {
+                                        val start = horizontalOffset
+                                        val target = if (commit) widthPx else 0f
+                                        animate(start, target, animationSpec = tween(160)) { value, _ ->
+                                            horizontalOffset = value
+                                        }
+                                        if (commit) onBack()
+                                        horizontalOffset = 0f
+                                        showingHomeUnderlay = false
+                                        releaseAnimating = false
+                                    }
                                 }
                             }
-                        }
-                    }
-                }
-        ) {
+                        } else Modifier
+                    )
+            ) {
             if (history.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No completed tasks yet.")
@@ -132,6 +189,7 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 }
             }
         }
+    }
     }
 
     selectedLog?.let { log ->

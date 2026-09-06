@@ -8,15 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,61 +52,9 @@ class MainActivity : ComponentActivity() {
                 }
                 val navController = rememberNavController()
 
-                fun screenPosition(route: String?): Pair<Int, Int> = when (route) {
-                    "history" -> Pair(1, 0)
-                    "home" -> Pair(0, 0)
-                    "list" -> Pair(-1, 0)
-                    "settings" -> Pair(0, -1)
-                    else -> Pair(0, 0)
-                }
-
                 NavHost(
                     navController = navController,
-                    startDestination = "home",
-                    enterTransition = {
-                        val (ix, iy) = screenPosition(initialState.destination.route)
-                        val (tx, ty) = screenPosition(targetState.destination.route)
-                        when {
-                            tx > ix -> slideInHorizontally(animationSpec = tween(170), initialOffsetX = { it }) + fadeIn(animationSpec = tween(120))
-                            tx < ix -> slideInHorizontally(animationSpec = tween(170), initialOffsetX = { -it }) + fadeIn(animationSpec = tween(120))
-                            ty < iy -> slideInVertically(animationSpec = tween(170), initialOffsetY = { it }) + fadeIn(animationSpec = tween(120))
-                            ty > iy -> slideInVertically(animationSpec = tween(170), initialOffsetY = { -it }) + fadeIn(animationSpec = tween(120))
-                            else -> EnterTransition.None
-                        }
-                    },
-                    exitTransition = {
-                        val (ix, iy) = screenPosition(initialState.destination.route)
-                        val (tx, ty) = screenPosition(targetState.destination.route)
-                        when {
-                            tx > ix -> slideOutHorizontally(animationSpec = tween(170), targetOffsetX = { -it }) + fadeOut(animationSpec = tween(120))
-                            tx < ix -> slideOutHorizontally(animationSpec = tween(170), targetOffsetX = { it }) + fadeOut(animationSpec = tween(120))
-                            ty < iy -> slideOutVertically(animationSpec = tween(170), targetOffsetY = { -it }) + fadeOut(animationSpec = tween(120))
-                            ty > iy -> slideOutVertically(animationSpec = tween(170), targetOffsetY = { it }) + fadeOut(animationSpec = tween(120))
-                            else -> ExitTransition.None
-                        }
-                    },
-                    popEnterTransition = {
-                        val (ix, iy) = screenPosition(initialState.destination.route)
-                        val (tx, ty) = screenPosition(targetState.destination.route)
-                        when {
-                            tx > ix -> slideInHorizontally(animationSpec = tween(170), initialOffsetX = { it }) + fadeIn(animationSpec = tween(120))
-                            tx < ix -> slideInHorizontally(animationSpec = tween(170), initialOffsetX = { -it }) + fadeIn(animationSpec = tween(120))
-                            ty < iy -> slideInVertically(animationSpec = tween(170), initialOffsetY = { it }) + fadeIn(animationSpec = tween(120))
-                            ty > iy -> slideInVertically(animationSpec = tween(170), initialOffsetY = { -it }) + fadeIn(animationSpec = tween(120))
-                            else -> EnterTransition.None
-                        }
-                    },
-                    popExitTransition = {
-                        val (ix, iy) = screenPosition(initialState.destination.route)
-                        val (tx, ty) = screenPosition(targetState.destination.route)
-                        when {
-                            tx > ix -> slideOutHorizontally(animationSpec = tween(170), targetOffsetX = { -it }) + fadeOut(animationSpec = tween(120))
-                            tx < ix -> slideOutHorizontally(animationSpec = tween(170), targetOffsetX = { it }) + fadeOut(animationSpec = tween(120))
-                            ty < iy -> slideOutVertically(animationSpec = tween(170), targetOffsetY = { -it }) + fadeOut(animationSpec = tween(120))
-                            ty > iy -> slideOutVertically(animationSpec = tween(170), targetOffsetY = { it }) + fadeOut(animationSpec = tween(120))
-                            else -> ExitTransition.None
-                        }
-                    }
+                    startDestination = "home"
                 ) {
                     composable("home") {
                         HomeScreen(

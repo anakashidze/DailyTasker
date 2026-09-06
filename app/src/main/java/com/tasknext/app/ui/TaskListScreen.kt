@@ -1,5 +1,6 @@
 package com.tasknext.app.ui
 
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -38,6 +39,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.tasknext.app.data.Priority
@@ -63,6 +65,10 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var draggingTaskId by remember { mutableStateOf<Long?>(null) }
     var todayCardTopPx by remember { mutableStateOf<Float?>(null) }
     var firstBacklogCardTopPx by remember { mutableStateOf<Float?>(null) }
+    var screenSize by remember { mutableStateOf(IntSize.Zero) }
+    var pageOffsetX by remember { mutableFloatStateOf(0f) }
+    var showingHomeUnderlay by remember { mutableStateOf(false) }
+    var pageReleaseAnimating by remember { mutableStateOf(false) }
 
     // During a Backlog -> Today drag, keep the visual swap authoritative until
     // Room emits the same membership. This prevents a duplicate dragged task and
@@ -249,38 +255,83 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         }
     ) { padding ->
         val backSwipeThresholdPx = with(LocalDensity.current) { 42.dp.toPx() }
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .pointerInput(onBack) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        var totalX = 0f
-                        var totalY = 0f
-                        var triggered = false
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Final)
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
-                            if (!change.isConsumed && !triggered) {
-                                val delta = change.position - change.previousPosition
-                                totalX += delta.x
-                                totalY += delta.y
-                                if (totalX <= -backSwipeThresholdPx &&
-                                    kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.15f
-                                ) {
-                                    triggered = true
-                                    onBack()
+                .onSizeChanged { screenSize = it }
+        ) {
+            if (showingHomeUnderlay || pageOffsetX < 0f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationX = screenSize.width.toFloat().coerceAtLeast(1f) + pageOffsetX }
+                ) {
+                    HomeScreen(
+                        viewModel = viewModel,
+                        onOpenList = {},
+                        onOpenHistory = {},
+                        onOpenSettings = {},
+                        gesturesEnabled = false
+                    )
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationX = pageOffsetX }
+                    .then(
+                        if (!pageReleaseAnimating) Modifier.pointerInput(onBack, screenSize) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                var totalX = 0f
+                                var totalY = 0f
+                                var tracking = false
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                    val change = event.changes.firstOrNull() ?: break
+                                    if (!change.pressed) break
+                                    if (!tracking && change.isConsumed) continue
+                                    val delta = change.position - change.previousPosition
+                                    totalX += delta.x
+                                    totalY += delta.y
+                                    if (!tracking) {
+                                        if (totalX <= -8f && kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.15f) {
+                                            tracking = true
+                                            showingHomeUnderlay = true
+                                        } else if (kotlin.math.abs(totalY) > kotlin.math.abs(totalX) * 1.10f) {
+                                            break
+                                        }
+                                    }
+                                    if (tracking) {
+                                        pageOffsetX = totalX.coerceIn(-screenSize.width.toFloat().coerceAtLeast(1f), 0f)
+                                        change.consume()
+                                    }
+                                }
+                                if (tracking) {
+                                    val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
+                                    val commit = kotlin.math.abs(pageOffsetX) >= widthPx / 2f || kotlin.math.abs(pageOffsetX) >= backSwipeThresholdPx
+                                    pageReleaseAnimating = true
+                                    scope.launch {
+                                        val start = pageOffsetX
+                                        val target = if (commit) -widthPx else 0f
+                                        animate(start, target, animationSpec = tween(160)) { value, _ ->
+                                            pageOffsetX = value
+                                        }
+                                        if (commit) onBack()
+                                        pageOffsetX = 0f
+                                        showingHomeUnderlay = false
+                                        pageReleaseAnimating = false
+                                    }
                                 }
                             }
-                        }
-                    }
-                }
-                .padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+                        } else Modifier
+                    )
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
             displayedMandatory?.let { task ->
                 item { SectionTitle("Today") }
                 item(key = "today-${task.id}") {
@@ -461,6 +512,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 )
             }
         }
+    }
     }
 
     if (showAdd) {

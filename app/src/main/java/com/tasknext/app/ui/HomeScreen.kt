@@ -1,5 +1,6 @@
 package com.tasknext.app.ui
 
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -40,6 +41,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
+import kotlinx.coroutines.launch
 
 /**
  * "One Thing"-style layout: one giant task fills almost the whole screen,
@@ -47,14 +49,15 @@ import kotlin.math.abs
  * Secondary nav (list/settings) is reduced to two small icons that fade
  * into the background instead of a normal toolbar/bottom bar.
  */
-private enum class HomeSwipeDirection { LEFT, RIGHT, UP, DOWN }
+private enum class HomeSwipeDirection { LEFT, RIGHT, DOWN }
 
 @Composable
 fun HomeScreen(
     viewModel: TaskViewModel,
     onOpenList: () -> Unit,
     onOpenHistory: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    gesturesEnabled: Boolean = true
 ) {
     val mandatory by viewModel.mandatoryTask.collectAsState()
     val bonusTasks by viewModel.bonusTasks.collectAsState()
@@ -72,6 +75,7 @@ fun HomeScreen(
     val bgTint by animateFloatAsState(if (dayComplete) 0.14f else 0.06f, tween(500), label = "bg")
 
     val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val swipeThresholdPx = with(density) { 36.dp.toPx() }
     val directionLockPx = with(density) { 8.dp.toPx() }
@@ -82,6 +86,7 @@ fun HomeScreen(
     var horizontalOffset by remember { mutableFloatStateOf(0f) }
     var verticalOffset by remember { mutableFloatStateOf(0f) }
     var pullOffset by remember { mutableFloatStateOf(0f) }
+    var releaseAnimating by remember { mutableStateOf(false) }
 
     val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
     val heightPx = screenSize.height.toFloat().coerceAtLeast(1f)
@@ -92,16 +97,16 @@ fun HomeScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .onSizeChanged { screenSize = it }
-            .pointerInput(
-                onOpenList,
-                onOpenHistory,
-                onOpenSettings,
-                screenSize,
-                swipeThresholdPx,
-                directionLockPx,
-                pullToAddThresholdPx
-            ) {
-                awaitEachGesture {
+            .then(
+                if (gesturesEnabled && !releaseAnimating) Modifier.pointerInput(
+                    onOpenList,
+                    onOpenHistory,
+                    screenSize,
+                    swipeThresholdPx,
+                    directionLockPx,
+                    pullToAddThresholdPx
+                ) {
+                    awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     var totalX = 0f
                     var totalY = 0f
@@ -136,7 +141,6 @@ fun HomeScreen(
                             direction = when {
                                 horizontalEnough && totalX < 0f -> HomeSwipeDirection.LEFT
                                 horizontalEnough && totalX > 0f -> HomeSwipeDirection.RIGHT
-                                verticalEnough && totalY < 0f -> HomeSwipeDirection.UP
                                 verticalEnough && totalY > 0f -> HomeSwipeDirection.DOWN
                                 else -> null
                             }
@@ -153,10 +157,6 @@ fun HomeScreen(
                             }
                             HomeSwipeDirection.RIGHT -> {
                                 horizontalOffset = totalX.coerceIn(0f, widthPx)
-                                change.consume()
-                            }
-                            HomeSwipeDirection.UP -> {
-                                verticalOffset = totalY.coerceIn(-heightPx, 0f)
                                 change.consume()
                             }
                             HomeSwipeDirection.DOWN -> {
@@ -181,23 +181,34 @@ fun HomeScreen(
                         HomeSwipeDirection.LEFT -> {
                             val distance = abs(horizontalOffset)
                             val commit = distance >= widthPx / 2f || distance >= swipeThresholdPx
-                            if (commit) onOpenHistory()
-                            horizontalOffset = 0f
-                            activeDirection = null
+                            releaseAnimating = true
+                            scope.launch {
+                                val start = horizontalOffset
+                                val target = if (commit) -widthPx else 0f
+                                animate(start, target, animationSpec = tween(160)) { value, _ ->
+                                    horizontalOffset = value
+                                }
+                                if (commit) onOpenHistory()
+                                horizontalOffset = 0f
+                                activeDirection = null
+                                releaseAnimating = false
+                            }
                         }
                         HomeSwipeDirection.RIGHT -> {
                             val distance = abs(horizontalOffset)
                             val commit = distance >= widthPx / 2f || distance >= swipeThresholdPx
-                            if (commit) onOpenList()
-                            horizontalOffset = 0f
-                            activeDirection = null
-                        }
-                        HomeSwipeDirection.UP -> {
-                            val distance = abs(verticalOffset)
-                            val commit = distance >= heightPx / 2f || distance >= swipeThresholdPx
-                            if (commit) onOpenSettings()
-                            verticalOffset = 0f
-                            activeDirection = null
+                            releaseAnimating = true
+                            scope.launch {
+                                val start = horizontalOffset
+                                val target = if (commit) widthPx else 0f
+                                animate(start, target, animationSpec = tween(160)) { value, _ ->
+                                    horizontalOffset = value
+                                }
+                                if (commit) onOpenList()
+                                horizontalOffset = 0f
+                                activeDirection = null
+                                releaseAnimating = false
+                            }
                         }
                         HomeSwipeDirection.DOWN -> {
                             val armed = pullOffset >= pullToAddThresholdPx
@@ -208,7 +219,8 @@ fun HomeScreen(
                         null -> Unit
                     }
                 }
-            }
+            } else Modifier
+        )
     ) {
         // The destination page is actually rendered behind Home and translated with
         // the finger. This gives the same direct-manipulation feel as a pager instead
@@ -232,21 +244,6 @@ fun HomeScreen(
                     TaskListScreen(viewModel = viewModel, onBack = {})
                 }
             }
-            HomeSwipeDirection.UP -> {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { translationY = heightPx + verticalOffset }
-                ) {
-                    SettingsScreen(
-                        viewModel = viewModel,
-                        onBack = {},
-                        onOpenHistory = {},
-                        onDarkThemeChanged = {},
-                        onRequestNotificationPermission = {}
-                    )
-                }
-            }
             HomeSwipeDirection.DOWN, null -> Unit
         }
 
@@ -258,7 +255,7 @@ fun HomeScreen(
                         HomeSwipeDirection.LEFT, HomeSwipeDirection.RIGHT -> horizontalOffset
                         else -> 0f
                     }
-                    translationY = if (activeDirection == HomeSwipeDirection.UP) verticalOffset else 0f
+                    translationY = 0f
                 }
                 .background(accent.copy(alpha = bgTint))
         ) {
