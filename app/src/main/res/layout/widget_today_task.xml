@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center_vertical"
     android:paddingStart="16dp"
-    android:paddingTop="11dp"
+    android:paddingTop="10dp"
     android:paddingEnd="16dp"
-    android:paddingBottom="11dp"
+    android:paddingBottom="10dp"
     android:background="@drawable/widget_today_background">
 
     <TextView
         android:id="@+id/widget_meta"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
         android:text="TODAY"
         android:textColor="#DDE8FF"
         android:textSize="10sp"
@@ -26,12 +25,14 @@
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
+        android:layout_centerVertical="true"
+        android:layout_marginTop="10dp"
         android:text="Today's task"
         android:textColor="#FFFFFFFF"
         android:textSize="16sp"
         android:textStyle="bold"
+        android:gravity="center_vertical"
         android:maxLines="2"
         android:ellipsize="end" />
 
-</LinearLayout>
+</RelativeLayout>

@@ -349,26 +349,20 @@ fun AddEditTaskDialog(
                             )
 
                             Text("Icon", style = MaterialTheme.typography.labelMedium)
-                            val iconRows = remember {
-                                val splitAt = (groupIconChoices.size + 1) / 2
-                                listOf(
-                                    groupIconChoices.take(splitAt),
-                                    groupIconChoices.drop(splitAt)
-                                )
+                            val iconColumns = remember {
+                                groupIconChoices.chunked(2)
                             }
-                            val iconScrollStateTop = rememberScrollState()
-                            val iconScrollStateBottom = rememberScrollState()
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                iconRows.forEachIndexed { rowIndex, rowIcons ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(
-                                                if (rowIndex == 0) iconScrollStateTop else iconScrollStateBottom
-                                            ),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                iconColumns.forEach { columnIcons ->
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        rowIcons.forEach { key ->
+                                        columnIcons.forEach { key ->
                                             val selected = newGroupIcon == key
                                             Surface(
                                                 shape = CircleShape,
@@ -393,6 +387,9 @@ fun AddEditTaskDialog(
                                                     )
                                                 }
                                             }
+                                        }
+                                        if (columnIcons.size == 1) {
+                                            Spacer(Modifier.size(38.dp))
                                         }
                                     }
                                 }
