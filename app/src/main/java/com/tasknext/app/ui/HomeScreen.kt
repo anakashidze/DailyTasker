@@ -185,13 +185,18 @@ fun HomeScreen(
                             scope.launch {
                                 val start = horizontalOffset
                                 val target = if (commit) -widthPx else 0f
-                                animate(start, target, animationSpec = tween(160)) { value, _ ->
+                                animate(start, target, animationSpec = tween(150)) { value, _ ->
                                     horizontalOffset = value
                                 }
-                                if (commit) onOpenHistory()
-                                horizontalOffset = 0f
-                                activeDirection = null
-                                releaseAnimating = false
+                                if (commit) {
+                                    // Keep Home fully off-screen until Navigation disposes this
+                                    // composable. Resetting here caused the one-frame Home flash.
+                                    onOpenHistory()
+                                } else {
+                                    horizontalOffset = 0f
+                                    activeDirection = null
+                                    releaseAnimating = false
+                                }
                             }
                         }
                         HomeSwipeDirection.RIGHT -> {
@@ -201,13 +206,17 @@ fun HomeScreen(
                             scope.launch {
                                 val start = horizontalOffset
                                 val target = if (commit) widthPx else 0f
-                                animate(start, target, animationSpec = tween(160)) { value, _ ->
+                                animate(start, target, animationSpec = tween(150)) { value, _ ->
                                     horizontalOffset = value
                                 }
-                                if (commit) onOpenList()
-                                horizontalOffset = 0f
-                                activeDirection = null
-                                releaseAnimating = false
+                                if (commit) {
+                                    // Do not snap back to Home before the destination route is ready.
+                                    onOpenList()
+                                } else {
+                                    horizontalOffset = 0f
+                                    activeDirection = null
+                                    releaseAnimating = false
+                                }
                             }
                         }
                         HomeSwipeDirection.DOWN -> {

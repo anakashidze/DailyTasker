@@ -4,7 +4,7 @@ TaskNext is a focused Android task app built around one main task per day, optio
 
 ## Current version
 
-- Version name: `1.7.0`
+- Version name: `1.7.4`
 - Version code: `20`
 - minSdk: `26`
 - targetSdk / compileSdk: `35`
@@ -58,7 +58,7 @@ Built-in groups are Task, Home, Health and Work. Custom groups can be added and 
 
 Upload the project contents to the root of a GitHub repository, then use **Actions → Build Android APK**. The workflow builds and verifies the APK with `zipalign`, `aapt2`, and `apksigner` before uploading the artifact.
 
-Artifact name: `TaskNext-v1.7.0-verified-apk`.
+Artifact name: `TaskNext-v1.7.4-verified-apk`.
 
 The included debug keystore is for consistent testing builds only; it is not a production Play Store signing key.
 

@@ -50,115 +50,135 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var showingHomeUnderlay by remember { mutableStateOf(false) }
     var releaseAnimating by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("History") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (history.isNotEmpty()) {
-                        IconButton(onClick = { confirmClearAll = true }) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = "Clear history")
-                        }
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        val dayFormat = remember { SimpleDateFormat("EEEE, MMM d yyyy", Locale.getDefault()) }
-        val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-        val fullFormat = remember { SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()) }
-
-        Box(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .onSizeChanged { screenSize = it }
-        ) {
-            if (showingHomeUnderlay || horizontalOffset > 0f) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { translationX = -screenSize.width.toFloat().coerceAtLeast(1f) + horizontalOffset }
-                ) {
-                    HomeScreen(
-                        viewModel = viewModel,
-                        onOpenList = {},
-                        onOpenHistory = {},
-                        onOpenSettings = {},
-                        gesturesEnabled = false
-                    )
-                }
-            }
-
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { screenSize = it }
+    ) {
+        if (showingHomeUnderlay || horizontalOffset > 0f) {
             Box(
-                modifier = Modifier
+                Modifier
                     .fillMaxSize()
-                    .graphicsLayer { translationX = horizontalOffset }
-                    .then(
-                        if (!releaseAnimating) Modifier.pointerInput(onBack, screenSize) {
-                            awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                var totalX = 0f
-                                var totalY = 0f
-                                var tracking = false
-                                while (true) {
-                                    val event = awaitPointerEvent(PointerEventPass.Final)
-                                    val change = event.changes.firstOrNull() ?: break
-                                    if (!change.pressed) break
-                                    if (!tracking && change.isConsumed) continue
-                                    val delta = change.position - change.previousPosition
-                                    totalX += delta.x
-                                    totalY += delta.y
-                                    if (!tracking) {
-                                        if (totalX >= 8f && abs(totalX) > abs(totalY) * 1.10f) {
-                                            tracking = true
-                                            showingHomeUnderlay = true
-                                        } else if (abs(totalY) > abs(totalX) * 1.10f) {
-                                            break
-                                        }
-                                    }
-                                    if (tracking) {
-                                        horizontalOffset = totalX.coerceIn(0f, screenSize.width.toFloat().coerceAtLeast(1f))
-                                        change.consume()
+                    .graphicsLayer {
+                        translationX = -screenSize.width.toFloat().coerceAtLeast(1f) + horizontalOffset
+                    }
+            ) {
+                HomeScreen(
+                    viewModel = viewModel,
+                    onOpenList = {},
+                    onOpenHistory = {},
+                    onOpenSettings = {},
+                    gesturesEnabled = false
+                )
+            }
+        }
+
+        Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { translationX = horizontalOffset }
+                .then(
+                    if (!releaseAnimating) Modifier.pointerInput(onBack, screenSize) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var totalX = 0f
+                            var totalY = 0f
+                            var tracking = false
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                val change = event.changes.firstOrNull() ?: break
+                                if (!change.pressed) break
+                                if (!tracking && change.isConsumed) continue
+                                val delta = change.position - change.previousPosition
+                                totalX += delta.x
+                                totalY += delta.y
+                                if (!tracking) {
+                                    if (totalX >= 8f && abs(totalX) > abs(totalY) * 1.10f) {
+                                        tracking = true
+                                        showingHomeUnderlay = true
+                                    } else if (abs(totalY) > abs(totalX) * 1.10f) {
+                                        break
                                     }
                                 }
                                 if (tracking) {
-                                    val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
-                                    val commit = horizontalOffset >= widthPx / 2f || horizontalOffset >= swipeThresholdPx
-                                    releaseAnimating = true
-                                    scope.launch {
-                                        val start = horizontalOffset
-                                        val target = if (commit) widthPx else 0f
-                                        animate(start, target, animationSpec = tween(160)) { value, _ ->
-                                            horizontalOffset = value
-                                        }
-                                        if (commit) onBack()
+                                    horizontalOffset = totalX.coerceIn(
+                                        0f,
+                                        screenSize.width.toFloat().coerceAtLeast(1f)
+                                    )
+                                    change.consume()
+                                }
+                            }
+                            if (tracking) {
+                                val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
+                                val commit = horizontalOffset >= widthPx / 2f ||
+                                    horizontalOffset >= swipeThresholdPx
+                                releaseAnimating = true
+                                scope.launch {
+                                    val startOffset = horizontalOffset
+                                    val targetOffset = if (commit) widthPx else 0f
+                                    animate(
+                                        initialValue = startOffset,
+                                        targetValue = targetOffset,
+                                        animationSpec = tween(150)
+                                    ) { value, _ ->
+                                        horizontalOffset = value
+                                    }
+                                    if (commit) {
+                                        onBack()
+                                    } else {
                                         horizontalOffset = 0f
                                         showingHomeUnderlay = false
                                         releaseAnimating = false
                                     }
                                 }
                             }
-                        } else Modifier
-                    )
-            ) {
+                        }
+                    } else Modifier
+                ),
+            topBar = {
+                TopAppBar(
+                    title = { Text("History") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        if (history.isNotEmpty()) {
+                            IconButton(onClick = { confirmClearAll = true }) {
+                                Icon(Icons.Default.DeleteSweep, contentDescription = "Clear history")
+                            }
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            val dayFormat = remember { SimpleDateFormat("EEEE, MMM d yyyy", Locale.getDefault()) }
+            val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+            val fullFormat = remember { SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()) }
+
             if (history.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .padding(padding)
+                        .fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text("No completed tasks yet.")
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                    modifier = Modifier
+                        .padding(padding)
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
                     contentPadding = PaddingValues(vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (groupByDay) {
-                        val grouped = history.groupBy { dayFormat.format(Date(it.completedAtEpochMillis)) }
+                        val grouped = history.groupBy {
+                            dayFormat.format(Date(it.completedAtEpochMillis))
+                        }
                         grouped.forEach { (day, logs) ->
                             item {
                                 Text(
@@ -189,7 +209,6 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 }
             }
         }
-    }
     }
 
     selectedLog?.let { log ->

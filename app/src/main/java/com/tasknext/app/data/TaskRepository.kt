@@ -224,25 +224,36 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     }
 
     /**
-     * Drag Today's task back into the backlog. If a backlog item exists, the current
-     * top backlog item is promoted to Today and the old Today task takes its old
-     * queue position. This preserves the one-thing-per-day invariant.
+     * Move Today's task back into the backlog at the release position. If a backlog
+     * task exists, its current top item becomes Today; the dragged task is inserted
+     * near the finger position among the remaining backlog tasks.
      */
-    suspend fun moveTodayToBacklog(taskId: Long): Long? {
-        val today = dao.getById(taskId) ?: return null
+    suspend fun moveTodayToBacklogAt(taskId: Long, insertionIndex: Int): Long? {
+        val all = dao.getAllOnce()
+        val today = all.firstOrNull { it.id == taskId } ?: return null
         if (today.slot != 0 || today.isArchived) return null
 
-        val next = dao.getAllOnce()
-            .asSequence()
+        val pool = all
             .filter { it.slot == null && !it.isArchived && it.id != taskId }
-            .minByOrNull { it.orderIndex }
+            .sortedBy { it.orderIndex }
 
+        val next = pool.firstOrNull()
         if (next == null) {
-            dao.update(today.copy(slot = null, orderIndex = 0))
+            dao.updateTasks(listOf(today.copy(slot = null, orderIndex = 0)))
         } else {
-            val nextOrder = next.orderIndex
-            dao.update(today.copy(slot = null, orderIndex = nextOrder))
-            dao.update(next.copy(slot = 0))
+            val remaining = pool.drop(1).toMutableList()
+            // insertionIndex is based on the pool before the top task is promoted.
+            val adjustedIndex = (insertionIndex - 1).coerceIn(0, remaining.size)
+            remaining.add(adjustedIndex, today.copy(slot = null))
+
+            val updates = buildList {
+                add(next.copy(slot = 0))
+                remaining.forEachIndexed { index, task ->
+                    add(task.copy(slot = null, orderIndex = index))
+                }
+            }
+            dao.updateTasks(updates)
+
             if (settings.queuedTomorrowTaskId == next.id) {
                 settings.queuedTomorrowTaskId = -1L
             }
@@ -252,11 +263,65 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         return next?.id
     }
 
-    /** Removes Bonus status without deleting the task; the task returns to its existing backlog position. */
-    suspend fun moveBonusToBacklog(taskId: Long) {
-        val task = dao.getById(taskId) ?: return
+    suspend fun moveTodayToBacklog(taskId: Long): Long? =
+        moveTodayToBacklogAt(taskId, 0)
+
+    /** Move a Bonus task into Backlog at the exact release position. */
+    suspend fun moveBonusToBacklogAt(taskId: Long, insertionIndex: Int) {
+        val all = dao.getAllOnce()
+        val task = all.firstOrNull { it.id == taskId } ?: return
         if (task.slot == null || task.slot == 0 || task.isArchived) return
-        dao.update(task.copy(slot = null))
+
+        val pool = all
+            .filter { it.slot == null && !it.isArchived && it.id != taskId }
+            .sortedBy { it.orderIndex }
+            .toMutableList()
+
+        pool.add(insertionIndex.coerceIn(0, pool.size), task.copy(slot = null))
+        dao.updateTasks(
+            pool.mapIndexed { index, poolTask ->
+                poolTask.copy(slot = null, orderIndex = index)
+            }
+        )
+    }
+
+    suspend fun moveBonusToBacklog(taskId: Long) {
+        val poolSize = dao.getAllOnce().count { it.slot == null && !it.isArchived }
+        moveBonusToBacklogAt(taskId, poolSize)
+    }
+
+    /**
+     * Convert Today into a Bonus task immediately. The top backlog task becomes Today
+     * when available so the daily mandatory slot remains populated.
+     */
+    suspend fun moveTodayToBonus(taskId: Long): Long? {
+        val all = dao.getAllOnce()
+        val today = all.firstOrNull { it.id == taskId } ?: return null
+        if (today.slot != 0 || today.isArchived) return null
+
+        val usedBonusSlots = all.mapNotNull { it.slot }.filter { it in 1..2 }.toSet()
+        val freeBonusSlot = listOf(1, 2).firstOrNull { it !in usedBonusSlots } ?: return null
+        val pool = all
+            .filter { it.slot == null && !it.isArchived && it.id != taskId }
+            .sortedBy { it.orderIndex }
+        val next = pool.firstOrNull()
+
+        val updates = buildList {
+            add(today.copy(slot = freeBonusSlot))
+            if (next != null) {
+                add(next.copy(slot = 0))
+                pool.drop(1).forEachIndexed { index, task ->
+                    add(task.copy(slot = null, orderIndex = index))
+                }
+            }
+        }
+        dao.updateTasks(updates)
+
+        if (next != null && settings.queuedTomorrowTaskId == next.id) {
+            settings.queuedTomorrowTaskId = -1L
+        }
+        settings.dayCompletedEpochDay = -1L
+        return next?.id
     }
 
     /**

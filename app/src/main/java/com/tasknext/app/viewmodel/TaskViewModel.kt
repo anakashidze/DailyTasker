@@ -176,9 +176,26 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         NotificationScheduler.cancel(getApplication(), taskId)
     }
 
-    fun moveTodayToBacklog(taskId: Long) = viewModelScope.launch {
+    fun moveBonusToBacklogAt(taskId: Long, insertionIndex: Int) = viewModelScope.launch {
+        repo.moveBonusToBacklogAt(taskId, insertionIndex)
         NotificationScheduler.cancel(getApplication(), taskId)
-        val newTodayId = repo.moveTodayToBacklog(taskId)
+    }
+
+    fun moveTodayToBacklog(taskId: Long) = moveTodayToBacklogAt(taskId, 0)
+
+    fun moveTodayToBacklogAt(taskId: Long, insertionIndex: Int) = viewModelScope.launch {
+        NotificationScheduler.cancel(getApplication(), taskId)
+        val newTodayId = repo.moveTodayToBacklogAt(taskId, insertionIndex)
+        newTodayId?.let { id -> repo.getTask(id)?.let { syncTaskReminder(it) } }
+        _dayComplete.value = false
+        _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        refreshTodayWidget()
+    }
+
+    fun moveTodayToBonus(taskId: Long) = viewModelScope.launch {
+        NotificationScheduler.cancel(getApplication(), taskId)
+        val newTodayId = repo.moveTodayToBonus(taskId)
+        repo.getTask(taskId)?.let { syncTaskReminder(it) }
         newTodayId?.let { id -> repo.getTask(id)?.let { syncTaskReminder(it) } }
         _dayComplete.value = false
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
