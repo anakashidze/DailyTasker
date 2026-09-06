@@ -19,6 +19,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -46,7 +49,10 @@ private val groupColors = listOf(
 
 private val groupIconChoices = listOf(
     "task", "home", "health", "work", "star", "fitness",
-    "bike", "shopping", "study", "food", "travel", "pet", "book"
+    "bike", "shopping", "study", "food", "travel", "pet", "book",
+    "car", "calendar", "flag", "bolt", "place", "person", "phone",
+    "mail", "build", "palette", "idea", "public", "bookmark", "label",
+    "folder", "schedule", "circle", "list"
 )
 
 private fun priorityLabel(priority: Priority): String =
@@ -110,6 +116,25 @@ fun AddEditTaskDialog(
     var newGroupName by remember { mutableStateOf("") }
     var newGroupIcon by remember { mutableStateOf("star") }
     var newGroupColor by remember { mutableStateOf("#7C3AED") }
+    val titleFocusRequester = remember { FocusRequester() }
+    val groupNameFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(existing?.id) {
+        if (existing == null) {
+            // Let the dialog and text field enter the composition before requesting focus.
+            withFrameNanos { }
+            titleFocusRequester.requestFocus()
+            withFrameNanos { }
+            keyboardController?.show()
+        }
+    }
+    LaunchedEffect(showNewGroup) {
+        if (showNewGroup) {
+            withFrameNanos { }
+            groupNameFocusRequester.requestFocus()
+        }
+    }
 
     val menuGroups = remember(availableGroups, selectedGroup) {
         if (availableGroups.any { it.name.equals(selectedGroup.name, ignoreCase = true) }) {
@@ -138,7 +163,9 @@ fun AddEditTaskDialog(
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(titleFocusRequester),
                     label = { Text("Title") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
@@ -306,7 +333,9 @@ fun AddEditTaskDialog(
                             OutlinedTextField(
                                 value = newGroupName,
                                 onValueChange = { newGroupName = it },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(groupNameFocusRequester),
                                 label = { Text("Group name") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
@@ -316,35 +345,50 @@ fun AddEditTaskDialog(
                             )
 
                             Text("Icon", style = MaterialTheme.typography.labelMedium)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                groupIconChoices.forEach { key ->
-                                    val selected = newGroupIcon == key
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
-                                        else MaterialTheme.colorScheme.surface,
-                                        border = if (selected) {
-                                            androidx.compose.foundation.BorderStroke(
-                                                1.5.dp,
-                                                MaterialTheme.colorScheme.primary
-                                            )
-                                        } else null
+                            val iconRows = remember {
+                                val splitAt = (groupIconChoices.size + 1) / 2
+                                listOf(
+                                    groupIconChoices.take(splitAt),
+                                    groupIconChoices.drop(splitAt)
+                                )
+                            }
+                            val iconScrollStateTop = rememberScrollState()
+                            val iconScrollStateBottom = rememberScrollState()
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                iconRows.forEachIndexed { rowIndex, rowIcons ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(
+                                                if (rowIndex == 0) iconScrollStateTop else iconScrollStateBottom
+                                            ),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        IconButton(
-                                            onClick = { newGroupIcon = key },
-                                            modifier = Modifier.size(38.dp)
-                                        ) {
-                                            GroupIcon(
-                                                key = key,
-                                                contentDescription = "Choose $key icon",
-                                                tint = parseColor(newGroupColor),
-                                                modifier = Modifier.size(20.dp)
-                                            )
+                                        rowIcons.forEach { key ->
+                                            val selected = newGroupIcon == key
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                                else MaterialTheme.colorScheme.surface,
+                                                border = if (selected) {
+                                                    androidx.compose.foundation.BorderStroke(
+                                                        1.5.dp,
+                                                        MaterialTheme.colorScheme.primary
+                                                    )
+                                                } else null
+                                            ) {
+                                                IconButton(
+                                                    onClick = { newGroupIcon = key },
+                                                    modifier = Modifier.size(38.dp)
+                                                ) {
+                                                    GroupIcon(
+                                                        key = key,
+                                                        contentDescription = "Choose $key icon",
+                                                        tint = parseColor(newGroupColor),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }

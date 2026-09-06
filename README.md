@@ -4,8 +4,8 @@ TaskNext is a focused Android task app built around one main task per day, optio
 
 ## Current version
 
-- Version name: `1.6.1`
-- Version code: `15`
+- Version name: `1.6.3`
+- Version code: `18`
 - minSdk: `26`
 - targetSdk / compileSdk: `35`
 - Android Gradle Plugin: `8.6.1`
@@ -18,6 +18,10 @@ TaskNext is a focused Android task app built around one main task per day, optio
 - Swipe right → Task List
 - Swipe up → Settings
 - Pull down → Add Task
+
+Left/right/up navigation now follows the finger: the destination page is visible during the drag and the gesture finishes only after release. A short gesture that does not meet the navigation threshold snaps Home back into place.
+
+Pull-down is intentionally different: a progress control fills as you pull. Release only after it is full to open Add Task; releasing early does nothing.
 
 Return gestures:
 - History: swipe right → Home
@@ -48,12 +52,12 @@ History supports deleting individual records or clearing all records.
 
 ## Groups
 
-Built-in groups are Task, Home, Health and Work. Custom groups can be added and removed. Removing a custom group reassigns its tasks to the immutable Task group.
+Built-in groups are Task, Home, Health and Work. Custom groups can be added and removed. Removing a custom group reassigns its tasks to the immutable Task group. The custom-group icon picker keeps all previous icons, adds car and more general-purpose choices, and displays them in two rows. Opening Add new group focuses the group-name field immediately.
 
 ## Build with GitHub Actions
 
 Upload the project contents to the root of a GitHub repository, then use **Actions → Build Android APK**. The workflow builds and verifies the APK with `zipalign`, `aapt2`, and `apksigner` before uploading the artifact.
 
-Artifact name: `TaskNext-v1.6.2-verified-apk`.
+Artifact name: `TaskNext-v1.6.3-verified-apk`.
 
 The included debug keystore is for consistent testing builds only; it is not a production Play Store signing key.

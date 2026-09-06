@@ -1,5 +1,6 @@
 package com.tasknext.app.ui
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -12,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
@@ -20,12 +22,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tasknext.app.data.Task
@@ -41,6 +48,8 @@ import kotlin.math.abs
  * Secondary nav (list/settings) is reduced to two small icons that fade
  * into the background instead of a normal toolbar/bottom bar.
  */
+private enum class HomeSwipeDirection { LEFT, RIGHT, UP, DOWN }
+
 @Composable
 fun HomeScreen(
     viewModel: TaskViewModel,
@@ -62,117 +71,278 @@ fun HomeScreen(
         } ?: Color(0xFF22C55E)
     }
     val bgTint by animateFloatAsState(if (dayComplete) 0.14f else 0.06f, tween(500), label = "bg")
-    val swipeThresholdPx = with(LocalDensity.current) { 36.dp.toPx() }
+
+    val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    val swipeThresholdPx = with(density) { 36.dp.toPx() }
+    val directionLockPx = with(density) { 8.dp.toPx() }
+    val pullToAddThresholdPx = with(density) { 84.dp.toPx() }
+
+    var screenSize by remember { mutableStateOf(IntSize.Zero) }
+    var activeDirection by remember { mutableStateOf<HomeSwipeDirection?>(null) }
+    val horizontalOffset = remember { Animatable(0f) }
+    val verticalOffset = remember { Animatable(0f) }
+    val pullOffset = remember { Animatable(0f) }
+
+    val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
+    val heightPx = screenSize.height.toFloat().coerceAtLeast(1f)
+    val pullProgress = (pullOffset.value / pullToAddThresholdPx).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(accent.copy(alpha = bgTint))
-            .pointerInput(onOpenList, onOpenHistory, onOpenSettings) {
+            .background(MaterialTheme.colorScheme.background)
+            .onSizeChanged { screenSize = it }
+            .pointerInput(
+                onOpenList,
+                onOpenHistory,
+                onOpenSettings,
+                screenSize,
+                swipeThresholdPx,
+                directionLockPx,
+                pullToAddThresholdPx
+            ) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     var totalX = 0f
                     var totalY = 0f
-                    var triggered = false
+                    var direction: HomeSwipeDirection? = null
+                    var pullHapticSent = false
+
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Final)
                         val change = event.changes.firstOrNull() ?: break
                         if (!change.pressed) break
 
-                        // Child controls (Done, bonus rows, etc.) keep ownership of their gestures.
-                        if (!change.isConsumed && !triggered) {
-                            val delta = change.position - change.previousPosition
-                            totalX += delta.x
-                            totalY += delta.y
+                        // If a child has already claimed the gesture (for example the
+                        // small bonus-task list), don't turn it into page navigation.
+                        if (direction == null && change.isConsumed) continue
 
-                            val horizontal = abs(totalX) >= swipeThresholdPx &&
+                        val delta = change.position - change.previousPosition
+                        totalX += delta.x
+                        totalY += delta.y
+
+                        if (direction == null) {
+                            val horizontalEnough = abs(totalX) >= directionLockPx &&
                                 abs(totalX) > abs(totalY) * 1.10f
-                            val vertical = abs(totalY) >= swipeThresholdPx &&
+                            val verticalEnough = abs(totalY) >= directionLockPx &&
                                 abs(totalY) > abs(totalX) * 1.10f
 
-                            when {
-                                horizontal -> {
-                                    triggered = true
-                                    change.consume()
-                                    if (totalX < 0f) onOpenHistory() else onOpenList()
+                            direction = when {
+                                horizontalEnough && totalX < 0f -> HomeSwipeDirection.LEFT
+                                horizontalEnough && totalX > 0f -> HomeSwipeDirection.RIGHT
+                                verticalEnough && totalY < 0f -> HomeSwipeDirection.UP
+                                verticalEnough && totalY > 0f -> HomeSwipeDirection.DOWN
+                                else -> null
+                            }
+                            if (direction != null) activeDirection = direction
+                        }
+
+                        when (direction) {
+                            HomeSwipeDirection.LEFT -> {
+                                horizontalOffset.snapTo(totalX.coerceIn(-widthPx, 0f))
+                                change.consume()
+                            }
+                            HomeSwipeDirection.RIGHT -> {
+                                horizontalOffset.snapTo(totalX.coerceIn(0f, widthPx))
+                                change.consume()
+                            }
+                            HomeSwipeDirection.UP -> {
+                                verticalOffset.snapTo(totalY.coerceIn(-heightPx, 0f))
+                                change.consume()
+                            }
+                            HomeSwipeDirection.DOWN -> {
+                                // Pull-down is intentionally not a page transition. The
+                                // progress control fills with the finger and only fires on release.
+                                val pulled = totalY.coerceAtLeast(0f)
+                                    .coerceAtMost(pullToAddThresholdPx * 1.18f)
+                                pullOffset.snapTo(pulled)
+                                if (pulled >= pullToAddThresholdPx && !pullHapticSent) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    pullHapticSent = true
                                 }
-                                vertical -> {
-                                    triggered = true
-                                    change.consume()
-                                    if (totalY < 0f) onOpenSettings() else showAdd = true
-                                }
+                                change.consume()
+                            }
+                            null -> Unit
+                        }
+                    }
+
+                    when (direction) {
+                        HomeSwipeDirection.LEFT -> {
+                            val distance = abs(horizontalOffset.value)
+                            val commit = distance >= widthPx / 2f || distance >= swipeThresholdPx
+                            if (commit) {
+                                horizontalOffset.animateTo(-widthPx, tween(170))
+                                onOpenHistory()
+                            } else {
+                                horizontalOffset.animateTo(0f, tween(180))
+                                activeDirection = null
                             }
                         }
+                        HomeSwipeDirection.RIGHT -> {
+                            val distance = abs(horizontalOffset.value)
+                            val commit = distance >= widthPx / 2f || distance >= swipeThresholdPx
+                            if (commit) {
+                                horizontalOffset.animateTo(widthPx, tween(170))
+                                onOpenList()
+                            } else {
+                                horizontalOffset.animateTo(0f, tween(180))
+                                activeDirection = null
+                            }
+                        }
+                        HomeSwipeDirection.UP -> {
+                            val distance = abs(verticalOffset.value)
+                            val commit = distance >= heightPx / 2f || distance >= swipeThresholdPx
+                            if (commit) {
+                                verticalOffset.animateTo(-heightPx, tween(170))
+                                onOpenSettings()
+                            } else {
+                                verticalOffset.animateTo(0f, tween(180))
+                                activeDirection = null
+                            }
+                        }
+                        HomeSwipeDirection.DOWN -> {
+                            val armed = pullOffset.value >= pullToAddThresholdPx
+                            pullOffset.animateTo(0f, tween(130))
+                            activeDirection = null
+                            if (armed) showAdd = true
+                        }
+                        null -> Unit
                     }
                 }
             }
     ) {
-        Column(
+        // The destination page is actually rendered behind Home and translated with
+        // the finger. This gives the same direct-manipulation feel as a pager instead
+        // of navigating as soon as a distance threshold is crossed.
+        when (activeDirection) {
+            HomeSwipeDirection.LEFT -> {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationX = widthPx + horizontalOffset.value }
+                ) {
+                    HistoryScreen(viewModel = viewModel, onBack = {})
+                }
+            }
+            HomeSwipeDirection.RIGHT -> {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationX = -widthPx + horizontalOffset.value }
+                ) {
+                    TaskListScreen(viewModel = viewModel, onBack = {})
+                }
+            }
+            HomeSwipeDirection.UP -> {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationY = heightPx + verticalOffset.value }
+                ) {
+                    SettingsScreen(
+                        viewModel = viewModel,
+                        onBack = {},
+                        onOpenHistory = {},
+                        onDarkThemeChanged = {},
+                        onRequestNotificationPermission = {}
+                    )
+                }
+            }
+            HomeSwipeDirection.DOWN, null -> Unit
+        }
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .safeDrawingPadding()
-                .padding(24.dp)
-        ) {
-
-            // Minimal top row: date only, no title bar.
-            Text(
-                DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault()).format(LocalDate.now()),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                when {
-                    dayComplete -> DayCompleteHero(accent)
-                    mandatory != null -> mandatory?.let { task ->
-                        OneThingHero(
-                            task = task,
-                            accent = accent,
-                            onDone = { viewModel.completeMandatory(task.id) }
-                        )
+                .graphicsLayer {
+                    translationX = when (activeDirection) {
+                        HomeSwipeDirection.LEFT, HomeSwipeDirection.RIGHT -> horizontalOffset.value
+                        else -> 0f
                     }
-                    else -> Text(
-                        "Nothing set for today.\nAdd one thing.",
-                        style = MaterialTheme.typography.headlineSmall,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    translationY = if (activeDirection == HomeSwipeDirection.UP) verticalOffset.value else 0f
                 }
-            }
-
-            if (bonusTasks.isNotEmpty()) {
+                .background(accent.copy(alpha = bgTint))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .padding(24.dp)
+            ) {
                 Text(
-                    "Also today",
-                    style = MaterialTheme.typography.labelSmall,
+                    DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault()).format(LocalDate.now()),
+                    style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(6.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.heightIn(max = 140.dp)) {
-                    items(bonusTasks, key = { it.id }) { task ->
-                        BonusTaskRow(task = task, onDone = { viewModel.completeBonus(task.id) })
+
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    when {
+                        dayComplete -> DayCompleteHero(accent)
+                        mandatory != null -> mandatory?.let { task ->
+                            OneThingHero(
+                                task = task,
+                                accent = accent,
+                                onDone = { viewModel.completeMandatory(task.id) }
+                            )
+                        }
+                        else -> Text(
+                            "Nothing set for today.\nAdd one thing.",
+                            style = MaterialTheme.typography.headlineSmall,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-            }
 
-            // Two quiet icons instead of a toolbar — tucked at the very bottom.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                IconButton(onClick = onOpenList) {
-                    Icon(
-                        Icons.Default.List, contentDescription = "Task list",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                if (bonusTasks.isNotEmpty()) {
+                    Text(
+                        "Also today",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(Modifier.height(6.dp))
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.heightIn(max = 140.dp)
+                    ) {
+                        items(bonusTasks, key = { it.id }) { task ->
+                            BonusTaskRow(task = task, onDone = { viewModel.completeBonus(task.id) })
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
                 }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(
-                        Icons.Default.Settings, contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(onClick = onOpenList) {
+                        Icon(
+                            Icons.Default.List,
+                            contentDescription = "Task list",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
+        }
+
+        if (pullProgress > 0f) {
+            PullToAddIndicator(
+                progress = pullProgress,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp)
+            )
         }
     }
 
@@ -208,6 +378,45 @@ fun HomeScreen(
             onPick = { viewModel.setTomorrowTask(it) },
             onDismiss = { viewModel.dismissTomorrowPicker() }
         )
+    }
+}
+
+@Composable
+private fun PullToAddIndicator(progress: Float, modifier: Modifier = Modifier) {
+    val armed = progress >= 1f
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = progress.coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxSize(),
+                    strokeWidth = 3.dp
+                )
+                Icon(
+                    imageVector = if (armed) Icons.Default.Check else Icons.Default.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                    tint = if (armed) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = if (armed) "Release to add task" else "Pull to add task",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (armed) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (armed) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

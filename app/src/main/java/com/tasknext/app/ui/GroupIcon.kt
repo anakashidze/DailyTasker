@@ -9,6 +9,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.vector.ImageVector
 
 fun groupIconVector(key: String): ImageVector = when (key) {
+    "task" -> Icons.Default.CheckCircle
     "home" -> Icons.Default.Home
     "health" -> Icons.Default.Favorite
     "work" -> Icons.Default.Work
@@ -21,6 +22,24 @@ fun groupIconVector(key: String): ImageVector = when (key) {
     "travel" -> Icons.Default.Flight
     "pet" -> Icons.Default.Pets
     "book" -> Icons.Default.MenuBook
+    "car" -> Icons.Default.DirectionsCar
+    "calendar" -> Icons.Default.Event
+    "flag" -> Icons.Default.Flag
+    "bolt" -> Icons.Default.Bolt
+    "place" -> Icons.Default.Place
+    "person" -> Icons.Default.Person
+    "phone" -> Icons.Default.Phone
+    "mail" -> Icons.Default.Mail
+    "build" -> Icons.Default.Build
+    "palette" -> Icons.Default.Palette
+    "idea" -> Icons.Default.Lightbulb
+    "public" -> Icons.Default.Public
+    "bookmark" -> Icons.Default.Bookmark
+    "label" -> Icons.Default.Label
+    "folder" -> Icons.Default.Folder
+    "schedule" -> Icons.Default.Schedule
+    "circle" -> Icons.Default.RadioButtonUnchecked
+    "list" -> Icons.Default.ListAlt
     else -> Icons.Default.CheckCircle
 }
 
