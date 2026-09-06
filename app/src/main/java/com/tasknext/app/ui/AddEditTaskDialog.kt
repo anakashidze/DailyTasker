@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,10 +28,6 @@ import com.tasknext.app.data.Priority
 import com.tasknext.app.data.Task
 import com.tasknext.app.data.TaskGroupDefinition
 import com.tasknext.app.data.TaskGroups
-
-private val lowPriority = Color(0xFF8DBBFF)
-private val mediumPriority = Color(0xFFFFD45C)
-private val highPriority = Color(0xFFFF8A8A)
 
 private data class GroupColorChoice(val hex: String, val label: String)
 
@@ -51,12 +48,6 @@ private val groupIconChoices = listOf(
     "task", "home", "health", "work", "star", "fitness",
     "bike", "shopping", "study", "food", "travel", "pet", "book"
 )
-
-private fun priorityColor(priority: Priority): Color = when (priority) {
-    Priority.LOW -> lowPriority
-    Priority.MEDIUM -> mediumPriority
-    Priority.HIGH -> highPriority
-}
 
 private fun priorityLabel(priority: Priority): String =
     priority.name.lowercase().replaceFirstChar { it.uppercase() }
@@ -172,10 +163,26 @@ fun AddEditTaskDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = priorityColor(priority)
+                                    containerColor = priorityPalette(priority).container,
+                                    contentColor = priorityPalette(priority).content
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    priorityPalette(priority).content.copy(alpha = 0.22f)
                                 )
                             ) {
-                                Text(priorityLabel(priority), color = Color(0xFF202020), maxLines = 1)
+                                Box(
+                                    Modifier
+                                        .size(7.dp)
+                                        .background(priorityPalette(priority).content, CircleShape)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    priorityLabel(priority),
+                                    color = priorityPalette(priority).content,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
                             }
                             DropdownMenu(
                                 expanded = priorityExpanded,
@@ -187,8 +194,8 @@ fun AddEditTaskDialog(
                                         leadingIcon = {
                                             Box(
                                                 Modifier
-                                                    .size(18.dp)
-                                                    .background(priorityColor(choice), CircleShape)
+                                                    .size(9.dp)
+                                                    .background(priorityPalette(choice).content, CircleShape)
                                             )
                                         },
                                         onClick = {
@@ -406,38 +413,21 @@ fun AddEditTaskDialog(
                     )
                 )
 
-                // Intentionally no separate container: reminder controls blend into the dialog surface.
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
-                    CompactCheckRow(
-                        checked = reminderOn,
-                        text = "Remind me",
-                        onToggle = { reminderOn = !reminderOn }
-                    )
-
-                    if (reminderOn) {
-                        CompactCheckRow(
-                            checked = useDefaultTime,
-                            text = "Use default time (%02d:%02d)".format(
-                                defaultReminderHour,
-                                defaultReminderMinute
-                            ),
-                            onToggle = { useDefaultTime = !useDefaultTime }
-                        )
-
-                        if (!useDefaultTime) {
-                            TextButton(
-                                onClick = { showTimePicker = true },
-                                modifier = Modifier.align(Alignment.Start),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp)
-                            ) {
-                                Text("Reminder time  %02d:%02d".format(hour, minute))
-                            }
-                        }
+                // One compact reminder control. New tasks use the global default time;
+                // tapping the time turns it into a task-specific override.
+                val displayedReminderHour = if (useDefaultTime) defaultReminderHour else hour
+                val displayedReminderMinute = if (useDefaultTime) defaultReminderMinute else minute
+                ReminderRow(
+                    checked = reminderOn,
+                    hour = displayedReminderHour,
+                    minute = displayedReminderMinute,
+                    onToggle = { reminderOn = !reminderOn },
+                    onTimeClick = {
+                        hour = displayedReminderHour
+                        minute = displayedReminderMinute
+                        showTimePicker = true
                     }
-                }
+                )
             }
         },
         confirmButton = {
@@ -455,7 +445,7 @@ fun AddEditTaskDialog(
                     )
                 }
             ) {
-                Text("Save")
+                Text(if (existing == null) "Add" else "Save")
             }
         },
         dismissButton = {
@@ -471,6 +461,7 @@ fun AddEditTaskDialog(
             onConfirm = { h, m ->
                 hour = h
                 minute = m
+                useDefaultTime = false
                 showTimePicker = false
             }
         )
@@ -478,48 +469,74 @@ fun AddEditTaskDialog(
 }
 
 @Composable
-private fun CompactCheckRow(
+private fun ReminderRow(
     checked: Boolean,
-    text: String,
-    onToggle: () -> Unit
+    hour: Int,
+    minute: Int,
+    onToggle: () -> Unit,
+    onTimeClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
             .padding(horizontal = 2.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(22.dp)
-                .background(
-                    if (checked) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    RoundedCornerShape(6.dp)
-                )
-                .border(
-                    width = 1.5.dp,
-                    color = if (checked) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.outline,
-                    shape = RoundedCornerShape(6.dp)
-                ),
-            contentAlignment = Alignment.Center
+                .weight(1f)
+                .clickable(onClick = onToggle)
+                .padding(vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (checked) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .background(
+                        if (checked) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        RoundedCornerShape(6.dp)
+                    )
+                    .border(
+                        width = 1.5.dp,
+                        color = if (checked) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outline,
+                        shape = RoundedCornerShape(6.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (checked) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = "Remind me",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        if (checked) {
+            TextButton(
+                onClick = onTimeClick,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            ) {
                 Icon(
-                    imageVector = Icons.Default.Check,
+                    imageVector = Icons.Default.Schedule,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    "%02d:%02d".format(hour, minute),
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
-        Spacer(Modifier.width(7.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 

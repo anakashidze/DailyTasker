@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Task::class, CompletionLog::class], version = 4, exportSchema = false)
+@Database(entities = [Task::class, CompletionLog::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
 
@@ -64,6 +64,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE completion_log ADD COLUMN prioritySnapshot TEXT NOT NULL DEFAULT 'MEDIUM'")
+                db.execSQL("ALTER TABLE completion_log ADD COLUMN groupNameSnapshot TEXT NOT NULL DEFAULT 'Task'")
+                db.execSQL("ALTER TABLE completion_log ADD COLUMN groupIconSnapshot TEXT NOT NULL DEFAULT 'task'")
+                db.execSQL("ALTER TABLE completion_log ADD COLUMN commentSnapshot TEXT NOT NULL DEFAULT ''")
+
+                // Enrich existing History rows from the archived task that created them.
+                db.execSQL(
+                    """
+                    UPDATE completion_log
+                    SET prioritySnapshot = COALESCE((SELECT priority FROM tasks WHERE tasks.id = completion_log.taskId), 'MEDIUM'),
+                        groupNameSnapshot = COALESCE((SELECT colorName FROM tasks WHERE tasks.id = completion_log.taskId), 'Task'),
+                        groupIconSnapshot = COALESCE((SELECT groupIcon FROM tasks WHERE tasks.id = completion_log.taskId), 'task'),
+                        commentSnapshot = COALESCE((SELECT comment FROM tasks WHERE tasks.id = completion_log.taskId), '')
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -71,7 +92,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "tasknext.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }

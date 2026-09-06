@@ -25,6 +25,7 @@ import com.tasknext.app.ui.HistoryScreen
 import com.tasknext.app.ui.HomeScreen
 import com.tasknext.app.ui.SettingsScreen
 import com.tasknext.app.ui.TaskListScreen
+import com.tasknext.app.ui.TomorrowScreen
 import com.tasknext.app.ui.theme.TaskNextTheme
 import com.tasknext.app.viewmodel.TaskViewModel
 
@@ -56,20 +57,27 @@ class MainActivity : ComponentActivity() {
                 NavHost(
                     navController = navController,
                     startDestination = "home",
-                    enterTransition = { fadeIn(animationSpec = tween(80)) },
-                    exitTransition = { fadeOut(animationSpec = tween(60)) },
-                    popEnterTransition = { fadeIn(animationSpec = tween(80)) },
-                    popExitTransition = { fadeOut(animationSpec = tween(60)) }
+                    enterTransition = { fadeIn(animationSpec = tween(55)) },
+                    exitTransition = { fadeOut(animationSpec = tween(45)) },
+                    popEnterTransition = { fadeIn(animationSpec = tween(55)) },
+                    popExitTransition = { fadeOut(animationSpec = tween(45)) }
                 ) {
                     composable("home") {
                         HomeScreen(
                             viewModel = viewModel,
                             onOpenList = { navController.navigate("list") { launchSingleTop = true } },
+                            onOpenHistory = { navController.navigate("history") { launchSingleTop = true } },
                             onOpenSettings = { navController.navigate("settings") { launchSingleTop = true } }
                         )
                     }
                     composable("list") {
                         TaskListScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable("tomorrow") {
+                        TomorrowScreen(
                             viewModel = viewModel,
                             onBack = { navController.popBackStack() }
                         )

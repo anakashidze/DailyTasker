@@ -166,9 +166,20 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         NotificationScheduler.cancel(getApplication(), taskId)
     }
 
-    fun replaceTodayWith(taskId: Long) = viewModelScope.launch {
+    fun moveTodayToBacklog(taskId: Long) = viewModelScope.launch {
+        NotificationScheduler.cancel(getApplication(), taskId)
+        val newTodayId = repo.moveTodayToBacklog(taskId)
+        newTodayId?.let { id -> repo.getTask(id)?.let { syncTaskReminder(it) } }
+        _dayComplete.value = false
+        _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+    }
+
+    fun replaceTodayWith(
+        taskId: Long,
+        backlogOrderAfterSwap: List<Long>? = null
+    ) = viewModelScope.launch {
         val previousToday = mandatoryTask.value
-        repo.replaceMandatoryWith(taskId)
+        repo.replaceMandatoryWith(taskId, backlogOrderAfterSwap)
         previousToday?.let { NotificationScheduler.cancel(getApplication(), it.id) }
         repo.getTask(taskId)?.let { syncTaskReminder(it) }
         _dayComplete.value = false

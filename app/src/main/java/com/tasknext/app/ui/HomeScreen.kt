@@ -4,7 +4,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +45,7 @@ import kotlin.math.abs
 fun HomeScreen(
     viewModel: TaskViewModel,
     onOpenList: () -> Unit,
+    onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val mandatory by viewModel.mandatoryTask.collectAsState()
@@ -50,6 +53,8 @@ fun HomeScreen(
     val dayComplete by viewModel.dayComplete.collectAsState()
     val showTomorrowPicker by viewModel.showTomorrowPicker.collectAsState()
     val pool by viewModel.pool.collectAsState()
+    val taskGroups by viewModel.taskGroups.collectAsState()
+    var showAdd by remember { mutableStateOf(false) }
 
     val accent = remember(mandatory?.colorHex) {
         mandatory?.colorHex?.let {
@@ -57,33 +62,49 @@ fun HomeScreen(
         } ?: Color(0xFF22C55E)
     }
     val bgTint by animateFloatAsState(if (dayComplete) 0.14f else 0.06f, tween(500), label = "bg")
-    val swipeThresholdPx = with(LocalDensity.current) { 42.dp.toPx() }
+    val swipeThresholdPx = with(LocalDensity.current) { 36.dp.toPx() }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(accent.copy(alpha = bgTint))
-            .pointerInput(onOpenList, onOpenSettings) {
-                var horizontalDrag = 0f
-                var navigationTriggered = false
-                detectHorizontalDragGestures(
-                    onDragStart = {
-                        horizontalDrag = 0f
-                        navigationTriggered = false
-                    },
-                    onHorizontalDrag = { change, amount ->
-                        if (!navigationTriggered) {
-                            horizontalDrag += amount
-                            if (abs(horizontalDrag) >= swipeThresholdPx) {
-                                change.consume()
-                                navigationTriggered = true
-                                if (horizontalDrag > 0f) onOpenList() else onOpenSettings()
+            .pointerInput(onOpenList, onOpenHistory, onOpenSettings) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var totalX = 0f
+                    var totalY = 0f
+                    var triggered = false
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        val change = event.changes.firstOrNull() ?: break
+                        if (!change.pressed) break
+
+                        // Child controls (Done, bonus rows, etc.) keep ownership of their gestures.
+                        if (!change.isConsumed && !triggered) {
+                            val delta = change.position - change.previousPosition
+                            totalX += delta.x
+                            totalY += delta.y
+
+                            val horizontal = abs(totalX) >= swipeThresholdPx &&
+                                abs(totalX) > abs(totalY) * 1.10f
+                            val vertical = abs(totalY) >= swipeThresholdPx &&
+                                abs(totalY) > abs(totalX) * 1.10f
+
+                            when {
+                                horizontal -> {
+                                    triggered = true
+                                    change.consume()
+                                    if (totalX < 0f) onOpenHistory() else onOpenList()
+                                }
+                                vertical -> {
+                                    triggered = true
+                                    change.consume()
+                                    if (totalY < 0f) onOpenSettings() else showAdd = true
+                                }
                             }
                         }
-                    },
-                    onDragEnd = { horizontalDrag = 0f },
-                    onDragCancel = { horizontalDrag = 0f }
-                )
+                    }
+                }
             }
     ) {
         Column(
@@ -153,6 +174,32 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (showAdd) {
+        AddEditTaskDialog(
+            existing = null,
+            availableGroups = taskGroups,
+            defaultReminderHour = viewModel.settings.defaultReminderHour,
+            defaultReminderMinute = viewModel.settings.defaultReminderMinute,
+            onAddGroup = { viewModel.addCustomGroup(it) },
+            onRemoveGroup = { viewModel.removeCustomGroup(it) },
+            onDismiss = { showAdd = false },
+            onSave = { title, group, priority, comment, remOn, h, m ->
+                viewModel.addTask(
+                    title = title,
+                    colorHex = group.colorHex,
+                    groupName = group.name,
+                    groupIcon = group.iconKey,
+                    priority = priority,
+                    comment = comment,
+                    reminderEnabled = remOn,
+                    hour = h,
+                    minute = m
+                )
+                showAdd = false
+            }
+        )
     }
 
     if (showTomorrowPicker) {

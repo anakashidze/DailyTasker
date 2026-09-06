@@ -148,6 +148,10 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             taskId = task.id,
             titleSnapshot = task.title,
             colorHexSnapshot = task.colorHex,
+            prioritySnapshot = task.priority.name,
+            groupNameSnapshot = task.groupName,
+            groupIconSnapshot = task.groupIcon,
+            commentSnapshot = task.comment,
             completedAtEpochMillis = System.currentTimeMillis()
         )
 
@@ -187,8 +191,15 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     }
 
 
-    /** Swap a backlog task into today's mandatory slot while returning the previous Today task to the backlog. */
-    suspend fun replaceMandatoryWith(taskId: Long) {
+    /**
+     * Swap a backlog task into today's mandatory slot while returning the previous
+     * Today task to the backlog. When the UI supplies the desired backlog order,
+     * persist that exact order so a recently reordered queue cannot snap back.
+     */
+    suspend fun replaceMandatoryWith(
+        taskId: Long,
+        backlogOrderAfterSwap: List<Long>? = null
+    ) {
         val selected = dao.getById(taskId) ?: return
         if (selected.slot != null || selected.isArchived) return
 
@@ -200,10 +211,45 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         }
         dao.update(selected.copy(slot = 0))
 
+        backlogOrderAfterSwap?.forEachIndexed { index, id ->
+            dao.getById(id)
+                ?.takeIf { !it.isArchived && it.id != taskId }
+                ?.let { dao.update(it.copy(slot = null, orderIndex = index)) }
+        }
+
         if (settings.queuedTomorrowTaskId == taskId) {
             settings.queuedTomorrowTaskId = -1L
         }
         settings.dayCompletedEpochDay = -1L
+    }
+
+    /**
+     * Drag Today's task back into the backlog. If a backlog item exists, the current
+     * top backlog item is promoted to Today and the old Today task takes its old
+     * queue position. This preserves the one-thing-per-day invariant.
+     */
+    suspend fun moveTodayToBacklog(taskId: Long): Long? {
+        val today = dao.getById(taskId) ?: return null
+        if (today.slot != 0 || today.isArchived) return null
+
+        val next = dao.getAllOnce()
+            .asSequence()
+            .filter { it.slot == null && !it.isArchived && it.id != taskId }
+            .minByOrNull { it.orderIndex }
+
+        if (next == null) {
+            dao.update(today.copy(slot = null, orderIndex = 0))
+        } else {
+            val nextOrder = next.orderIndex
+            dao.update(today.copy(slot = null, orderIndex = nextOrder))
+            dao.update(next.copy(slot = 0))
+            if (settings.queuedTomorrowTaskId == next.id) {
+                settings.queuedTomorrowTaskId = -1L
+            }
+        }
+
+        settings.dayCompletedEpochDay = -1L
+        return next?.id
     }
 
     /** Removes Bonus status without deleting the task; the task returns to its existing backlog position. */

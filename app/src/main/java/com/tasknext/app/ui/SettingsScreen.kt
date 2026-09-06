@@ -37,7 +37,8 @@ fun SettingsScreen(
     var darkTheme by remember { mutableStateOf(settings.darkTheme) }
     var groupByDay by remember { mutableStateOf(settings.groupHistoryByDay) }
     var showDefaultTimePicker by remember { mutableStateOf(false) }
-    val backSwipeThresholdPx = with(LocalDensity.current) { 42.dp.toPx() }
+    val backSwipeThresholdPx = with(LocalDensity.current) { 36.dp.toPx() }
+    val scrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
@@ -62,24 +63,25 @@ fun SettingsScreen(
                         var totalY = 0f
                         var triggered = false
                         while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
                             val change = event.changes.firstOrNull() ?: break
                             if (!change.pressed) break
-                            if (!change.isConsumed && !triggered) {
+                            if (!triggered && scrollState.value == 0) {
                                 val delta = change.position - change.previousPosition
                                 totalX += delta.x
                                 totalY += delta.y
-                                if (totalX >= backSwipeThresholdPx &&
-                                    kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.15f
+                                if (totalY >= backSwipeThresholdPx &&
+                                    kotlin.math.abs(totalY) > kotlin.math.abs(totalX) * 1.10f
                                 ) {
                                     triggered = true
+                                    change.consume()
                                     onBack()
                                 }
                             }
                         }
                     }
                 }
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {

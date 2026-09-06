@@ -25,7 +25,7 @@ Do not upload the outer ZIP or an extra parent folder around these files.
 4. Choose **Run workflow** -> **Run workflow**.
 5. Wait for the build job to finish successfully.
 6. Open that workflow run.
-7. Under **Artifacts**, download **TaskNext-debug-apk**.
+7. Under **Artifacts**, download **TaskNext-v1.6.2-verified-apk**.
 8. Extract the downloaded artifact ZIP.
 9. The APK inside is `app-debug.apk`.
 

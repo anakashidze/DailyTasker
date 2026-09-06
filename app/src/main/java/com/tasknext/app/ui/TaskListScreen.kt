@@ -31,7 +31,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -43,11 +45,6 @@ import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-
-// More visible than the earlier very pale priority chips while still keeping a soft UI.
-private val priorityLow = Color(0xFF8DBBFF)
-private val priorityMedium = Color(0xFFFFD45C)
-private val priorityHigh = Color(0xFFFF8A8A)
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -64,6 +61,14 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Task?>(null) }
     var draggingTaskId by remember { mutableStateOf<Long?>(null) }
+    var todayCardTopPx by remember { mutableStateOf<Float?>(null) }
+    var firstBacklogCardTopPx by remember { mutableStateOf<Float?>(null) }
+
+    // During a Backlog -> Today drag, keep the visual swap authoritative until
+    // Room emits the same membership. This prevents a duplicate dragged task and
+    // avoids the old Today card flashing back while the database catches up.
+    var pendingTodayTask by remember { mutableStateOf<Task?>(null) }
+    var pendingPreviousTodayId by remember { mutableStateOf<Long?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -72,14 +77,42 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var localPool by remember { mutableStateOf<List<Task>>(sortedPool) }
     var pendingPersistedOrder by remember { mutableStateOf<List<Long>?>(null) }
 
-    LaunchedEffect(sortedPool, draggingTaskId, pendingPersistedOrder) {
+    LaunchedEffect(
+        sortedPool,
+        mandatory,
+        draggingTaskId,
+        pendingPersistedOrder,
+        pendingTodayTask,
+        pendingPreviousTodayId
+    ) {
+        if (draggingTaskId != null) return@LaunchedEffect
+
+        val incomingIds = sortedPool.map { it.id }
+
+        pendingTodayTask?.let { promoted ->
+            val previousTodayId = pendingPreviousTodayId
+            val todayConfirmed = mandatory?.id == promoted.id
+            val poolConfirmed = promoted.id !in incomingIds &&
+                (previousTodayId == null || previousTodayId in incomingIds)
+
+            if (todayConfirmed && poolConfirmed) {
+                localPool = sortedPool
+                pendingTodayTask = null
+                pendingPreviousTodayId = null
+                pendingPersistedOrder = null
+            } else {
+                // Keep the immediate visual swap while Room is still emitting the
+                // pre-swap membership. Refresh only tasks that already exist locally.
+                val incomingById = sortedPool.associateBy { it.id }
+                localPool = localPool.map { incomingById[it.id] ?: it }
+            }
+            return@LaunchedEffect
+        }
+
         // Never let a stale Room emission replace the order currently shown on screen.
         // After a drag ends, localPool stays authoritative until Room reports the same
         // persisted id order. This also prevents a new long-press (with zero movement)
         // from visually swapping tasks back to their previous positions.
-        if (draggingTaskId != null) return@LaunchedEffect
-
-        val incomingIds = sortedPool.map { it.id }
         val pendingIds = pendingPersistedOrder
 
         if (pendingIds == null) {
@@ -87,17 +120,19 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         } else if (incomingIds == pendingIds) {
             localPool = sortedPool
             pendingPersistedOrder = null
+        } else if (incomingIds.toSet() != pendingIds.toSet()) {
+            // A real state change (Today/Bonus/Delete/etc.) changed pool membership.
+            // That is not a stale reorder emission, so accept Room immediately.
+            localPool = sortedPool
+            pendingPersistedOrder = null
         } else {
-            // Room has not caught up yet. Keep the current ordering, but refresh each
-            // task's content and include/remove tasks if another action changed the pool.
+            // Room has not caught up yet. Keep the current ordering, but refresh content.
             val incomingById = sortedPool.associateBy { it.id }
-            val refreshed = localPool.mapNotNull { incomingById[it.id] }.toMutableList()
-            val existingIds = refreshed.asSequence().map { it.id }.toHashSet()
-            sortedPool.filterNot { it.id in existingIds }.forEach(refreshed::add)
-            localPool = refreshed
+            localPool = localPool.mapNotNull { incomingById[it.id] }
         }
     }
     val displayPool = localPool
+    val displayedMandatory = pendingTodayTask ?: mandatory
     val tomorrowTask = remember(displayPool, queuedTomorrowId) {
         displayPool.firstOrNull { it.id == queuedTomorrowId }
             ?: displayPool.firstOrNull()
@@ -246,15 +281,27 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            mandatory?.let { task ->
+            displayedMandatory?.let { task ->
                 item { SectionTitle("Today") }
                 item(key = "today-${task.id}") {
                     SwipeableTaskRow(
+                        modifier = (if (draggingTaskId == task.id) Modifier.zIndex(10f) else Modifier)
+                            .onGloballyPositioned { coordinates ->
+                                todayCardTopPx = coordinates.positionInRoot().y
+                            },
                         task = task,
                         tag = "TODAY",
                         onEdit = { editing = task },
                         onDelete = { deleteWithUndo(task) },
-                        onComplete = { completeWithUndo(task) }
+                        onComplete = { completeWithUndo(task) },
+                        dragHint = "Long-press and drag down to return Today to backlog",
+                        onDragDown = {
+                            viewModel.moveTodayToBacklog(task.id)
+                            true
+                        },
+                        onDraggingStateChanged = { isDragging ->
+                            draggingTaskId = if (isDragging) task.id else null
+                        }
                     )
                 }
                 item { Spacer(Modifier.height(6.dp)) }
@@ -306,10 +353,30 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             itemsIndexed(displayPool, key = { _, task -> "pool-${task.id}" }) { index, task ->
                 val isTomorrow = task.id == tomorrowTask?.id
                 val canMakeBonus = bonusTasks.size < 2 && task.id != queuedTomorrowId
-                val itemModifier = if (draggingTaskId == task.id) {
+                val baseItemModifier = if (draggingTaskId == task.id) {
                     Modifier.zIndex(10f)
                 } else {
                     Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 170))
+                }
+                val itemModifier = if (index == 0) {
+                    baseItemModifier.onGloballyPositioned { coordinates ->
+                        if (draggingTaskId != task.id) {
+                            firstBacklogCardTopPx = coordinates.positionInRoot().y
+                        }
+                    }
+                } else {
+                    baseItemModifier
+                }
+
+                val todayDropDistancePx = if (
+                    index == 0 &&
+                    displayedMandatory != null &&
+                    todayCardTopPx != null &&
+                    firstBacklogCardTopPx != null
+                ) {
+                    (firstBacklogCardTopPx!! - todayCardTopPx!!).takeIf { it > 0f }
+                } else {
+                    null
                 }
 
                 SwipeableTaskRow(
@@ -329,11 +396,41 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     } else {
                         "Long-press and drag up or down to reorder"
                     },
+                    dragUpThresholdPx = todayDropDistancePx,
                     onDragUp = {
                         val currentIndex = localPool.indexOfFirst { it.id == task.id }
                         when {
                             currentIndex == 0 -> {
-                                viewModel.replaceTodayWith(task.id)
+                                val selected = localPool[currentIndex]
+                                val previousToday = displayedMandatory
+
+                                // Perform the membership swap in memory at the exact drop
+                                // boundary. This removes the dragged task from Backlog before
+                                // Today renders it, so the user never sees two copies.
+                                val updatedPool = localPool.toMutableList().apply {
+                                    removeAt(currentIndex)
+                                    if (previousToday != null && previousToday.id != selected.id) {
+                                        add(
+                                            0,
+                                            previousToday.copy(
+                                                slot = null,
+                                                orderIndex = selected.orderIndex
+                                            )
+                                        )
+                                    }
+                                }.mapIndexed { newIndex, poolTask ->
+                                    poolTask.copy(orderIndex = newIndex)
+                                }
+
+                                localPool = updatedPool
+                                pendingTodayTask = selected.copy(slot = 0)
+                                pendingPreviousTodayId = previousToday?.id
+                                pendingPersistedOrder = null
+                                draggingTaskId = null
+                                viewModel.replaceTodayWith(
+                                    task.id,
+                                    updatedPool.map { it.id }
+                                )
                                 true
                             }
                             currentIndex > 0 -> swapLocalPool(task.id, -1)
@@ -350,12 +447,15 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             // before the previous drag while Room finishes persisting it.
                             draggingTaskId = task.id
                         } else {
-                            if (draggingTaskId == task.id && localPool.isNotEmpty()) {
+                            if (pendingTodayTask?.id != task.id &&
+                                draggingTaskId == task.id &&
+                                localPool.isNotEmpty()
+                            ) {
                                 val finalOrder = localPool.map { it.id }
                                 pendingPersistedOrder = finalOrder
                                 viewModel.reorderPool(finalOrder)
                             }
-                            draggingTaskId = null
+                            if (draggingTaskId == task.id) draggingTaskId = null
                         }
                     }
                 )
@@ -438,6 +538,7 @@ private fun SwipeableTaskRow(
     modifier: Modifier = Modifier,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
+    dragUpThresholdPx: Float? = null,
     onDragUp: (() -> Boolean)? = null,
     onDragDown: (() -> Boolean)? = null,
     onDraggingStateChanged: (Boolean) -> Unit = {}
@@ -500,6 +601,7 @@ private fun SwipeableTaskRow(
                 onEdit = onEdit,
                 onMakeBonus = onMakeBonus,
                 dragHint = dragHint,
+                dragUpThresholdPx = dragUpThresholdPx,
                 onDragUp = onDragUp,
                 onDragDown = onDragDown,
                 onDraggingChanged = { isDragging ->
@@ -518,6 +620,7 @@ private fun TaskRow(
     onEdit: () -> Unit,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
+    dragUpThresholdPx: Float? = null,
     onDragUp: (() -> Boolean)? = null,
     onDragDown: (() -> Boolean)? = null,
     onDraggingChanged: (Boolean) -> Unit = {}
@@ -592,13 +695,18 @@ private fun TaskRow(
                             } else {
                                 fallbackThresholdPx
                             }
+                            // For the first Backlog item, the Today target can be much farther
+                            // away than one row because section titles/Bonus rows sit between them.
+                            // Use the measured card-top distance so promotion happens only when
+                            // the dragged card's top actually reaches the existing Today card top.
+                            val upSwapDistance = dragUpThresholdPx
+                                ?.takeIf { it > 0f }
+                                ?: swapDistance
 
-                            if (dragOffset <= -swapDistance && currentDragUp != null) {
+                            if (dragOffset <= -upSwapDistance && currentDragUp != null) {
                                 val didSwap = currentDragUp?.invoke() == true
                                 if (didSwap) {
-                                    // Re-arm the threshold from the task's new row. The next swap
-                                    // can happen only after its top crosses the next neighbour's top.
-                                    dragOffset += swapDistance
+                                    dragOffset += upSwapDistance
                                 }
                             } else if (dragOffset >= swapDistance && currentDragDown != null) {
                                 val didSwap = currentDragDown?.invoke() == true
@@ -699,20 +807,28 @@ private fun StatusPill(tag: String) {
 
 @Composable
 private fun PriorityPill(priority: Priority) {
-    val background = when (priority) {
-        Priority.LOW -> priorityLow
-        Priority.MEDIUM -> priorityMedium
-        Priority.HIGH -> priorityHigh
-    }
+    val palette = priorityPalette(priority)
     Surface(
-        color = background,
+        color = palette.container,
+        contentColor = palette.content,
         shape = RoundedCornerShape(50)
     ) {
-        Text(
-            priority.name.lowercase().replaceFirstChar { it.uppercase() },
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF202020)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Box(
+                Modifier
+                    .size(6.dp)
+                    .background(palette.content, CircleShape)
+            )
+            Text(
+                priority.name.lowercase().replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.content
+            )
+        }
     }
 }
