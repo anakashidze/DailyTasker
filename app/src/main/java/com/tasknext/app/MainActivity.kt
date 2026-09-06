@@ -51,6 +51,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val navController = rememberNavController()
+                fun goHome() {
+                    if (!navController.popBackStack("home", inclusive = false)) {
+                        navController.navigate("home") { launchSingleTop = true }
+                    }
+                }
 
                 NavHost(
                     navController = navController,
@@ -59,15 +64,13 @@ class MainActivity : ComponentActivity() {
                     composable("home") {
                         HomeScreen(
                             viewModel = viewModel,
-                            onOpenList = { navController.navigate("list") { launchSingleTop = true } },
-                            onOpenHistory = { navController.navigate("history") { launchSingleTop = true } },
                             onOpenSettings = { navController.navigate("settings") { launchSingleTop = true } }
                         )
                     }
                     composable("list") {
                         TaskListScreen(
                             viewModel = viewModel,
-                            onBack = { navController.popBackStack() }
+                            onBack = { goHome() }
                         )
                     }
                     composable("tomorrow") {
@@ -88,7 +91,7 @@ class MainActivity : ComponentActivity() {
                     composable("history") {
                         HistoryScreen(
                             viewModel = viewModel,
-                            onBack = { navController.popBackStack() }
+                            onBack = { goHome() }
                         )
                     }
                 }

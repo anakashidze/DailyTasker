@@ -78,4 +78,12 @@ class SettingsStore(context: Context) {
     var queuedTomorrowTaskId: Long
         get() = prefs.getLong("queued_tomorrow_task_id", -1L)
         set(value) = prefs.edit().putLong("queued_tomorrow_task_id", value).apply()
+
+    var streakCount: Int
+        get() = prefs.getInt("streak_count", 0)
+        set(value) = prefs.edit().putInt("streak_count", value.coerceAtLeast(0)).apply()
+
+    var streakLastCompletedEpochDay: Long
+        get() = prefs.getLong("streak_last_completed_epoch_day", -1L)
+        set(value) = prefs.edit().putLong("streak_last_completed_epoch_day", value).apply()
 }

@@ -61,6 +61,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val pool by viewModel.pool.collectAsState()
     val mandatory by viewModel.mandatoryTask.collectAsState()
     val bonusTasks by viewModel.bonusTasks.collectAsState()
+    val overdueTasks by viewModel.overdueTasks.collectAsState()
     val queuedTomorrowId by viewModel.queuedTomorrowTaskId.collectAsState()
     val taskGroups by viewModel.taskGroups.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
@@ -69,16 +70,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var todayCardTopPx by remember { mutableStateOf<Float?>(null) }
     var firstBacklogCardTopPx by remember { mutableStateOf<Float?>(null) }
     var backlogHeaderTopPx by remember { mutableStateOf<Float?>(null) }
-    var screenSize by remember { mutableStateOf(IntSize.Zero) }
-    var pageOffsetX by remember { mutableFloatStateOf(0f) }
-    var showingHomeUnderlay by remember { mutableStateOf(false) }
-    var pageReleaseAnimating by remember { mutableStateOf(false) }
-    var listRootOffset by remember { mutableStateOf(Offset.Zero) }
     val taskCardBounds = remember { mutableMapOf<Long, Rect>() }
 
-    // During a Backlog -> Today drag, keep the visual swap authoritative until
-    // Room emits the same membership. This prevents a duplicate dragged task and
-    // avoids the old Today card flashing back while the database catches up.
     var pendingTodayTask by remember { mutableStateOf<Task?>(null) }
     var pendingPreviousTodayId by remember { mutableStateOf<Long?>(null) }
 
@@ -98,7 +91,6 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         pendingPreviousTodayId
     ) {
         if (draggingTaskId != null) return@LaunchedEffect
-
         val incomingIds = sortedPool.map { it.id }
 
         pendingTodayTask?.let { promoted ->
@@ -113,46 +105,41 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 pendingPreviousTodayId = null
                 pendingPersistedOrder = null
             } else {
-                // Keep the immediate visual swap while Room is still emitting the
-                // pre-swap membership. Refresh only tasks that already exist locally.
                 val incomingById = sortedPool.associateBy { it.id }
                 localPool = localPool.map { incomingById[it.id] ?: it }
             }
             return@LaunchedEffect
         }
 
-        // Never let a stale Room emission replace the order currently shown on screen.
-        // After a drag ends, localPool stays authoritative until Room reports the same
-        // persisted id order. This also prevents a new long-press (with zero movement)
-        // from visually swapping tasks back to their previous positions.
         val pendingIds = pendingPersistedOrder
-
-        if (pendingIds == null) {
-            localPool = sortedPool
-        } else if (incomingIds == pendingIds) {
-            localPool = sortedPool
-            pendingPersistedOrder = null
-        } else if (incomingIds.toSet() != pendingIds.toSet()) {
-            // A real state change (Today/Bonus/Delete/etc.) changed pool membership.
-            // That is not a stale reorder emission, so accept Room immediately.
-            localPool = sortedPool
-            pendingPersistedOrder = null
-        } else {
-            // Room has not caught up yet. Keep the current ordering, but refresh content.
-            val incomingById = sortedPool.associateBy { it.id }
-            localPool = localPool.mapNotNull { incomingById[it.id] }
+        when {
+            pendingIds == null -> localPool = sortedPool
+            incomingIds == pendingIds -> {
+                localPool = sortedPool
+                pendingPersistedOrder = null
+            }
+            incomingIds.toSet() != pendingIds.toSet() -> {
+                localPool = sortedPool
+                pendingPersistedOrder = null
+            }
+            else -> {
+                val incomingById = sortedPool.associateBy { it.id }
+                localPool = localPool.mapNotNull { incomingById[it.id] }
+            }
         }
     }
+
     val displayPool = localPool
     val displayedMandatory = pendingTodayTask ?: mandatory
     val tomorrowTask = remember(displayPool, queuedTomorrowId) {
-        displayPool.firstOrNull { it.id == queuedTomorrowId }
-            ?: displayPool.firstOrNull()
+        displayPool.firstOrNull { it.id == queuedTomorrowId } ?: displayPool.firstOrNull()
     }
+
     SideEffect {
         val activeIds = buildSet {
             displayedMandatory?.let { add(it.id) }
             bonusTasks.forEach { add(it.id) }
+            overdueTasks.forEach { add(it.id) }
             displayPool.forEach { add(it.id) }
         }
         taskCardBounds.keys.retainAll(activeIds)
@@ -181,10 +168,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         }
     }
 
-
-
     suspend fun showUndoSnackbar(message: String, undo: () -> Unit) {
-        // Keep one clear undo decision visible at a time. A newer action replaces an older snackbar.
         snackbarHostState.currentSnackbarData?.dismiss()
         val result = withTimeoutOrNull(15_000L) {
             snackbarHostState.showSnackbar(
@@ -211,6 +195,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     fun completeWithUndo(task: Task) {
         val previousQueuedTomorrowId = queuedTomorrowId
         val previousDayCompletedEpochDay = viewModel.settings.dayCompletedEpochDay
+        val previousStreakCount = viewModel.settings.streakCount
+        val previousStreakLastCompletedEpochDay = viewModel.settings.streakLastCompletedEpochDay
         val job = viewModel.completeFromList(task.id)
         scope.launch {
             job.join()
@@ -218,192 +204,94 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 viewModel.undoCompletion(
                     task = task,
                     previousQueuedTomorrowTaskId = previousQueuedTomorrowId,
-                    previousDayCompletedEpochDay = previousDayCompletedEpochDay
+                    previousDayCompletedEpochDay = previousDayCompletedEpochDay,
+                    previousStreakCount = previousStreakCount,
+                    previousStreakLastCompletedEpochDay = previousStreakLastCompletedEpochDay
                 )
             }
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onSizeChanged { screenSize = it }
-    ) {
-        if (showingHomeUnderlay || pageOffsetX < 0f) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        translationX = screenSize.width.toFloat().coerceAtLeast(1f) + pageOffsetX
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text("Tasks") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back to Home")
                     }
-            ) {
-                HomeScreen(
-                    viewModel = viewModel,
-                    onOpenList = {},
-                    onOpenHistory = {},
-                    onOpenSettings = {},
-                    gesturesEnabled = false
-                )
+                }
+            )
+        },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) { data ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    shadowElevation = 6.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            data.visuals.message,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        data.visuals.actionLabel?.let { label ->
+                            TextButton(
+                                onClick = { data.performAction() },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.inversePrimary
+                                )
+                            ) {
+                                Text(label, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showAdd = true }) {
+                Icon(Icons.Default.Add, contentDescription = "Add task")
             }
         }
-
-        Scaffold(
+    ) { padding ->
+        LazyColumn(
             modifier = Modifier
+                .padding(padding)
                 .fillMaxSize()
-                .graphicsLayer { translationX = pageOffsetX },
-            topBar = {
-                TopAppBar(
-                    title = { Text("Tasks") },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                        }
-                    }
-                )
-            },
-            snackbarHost = {
-                SnackbarHost(
-                    hostState = snackbarHostState,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                ) { data ->
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 28.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.inverseSurface,
-                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                        shadowElevation = 6.dp
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                data.visuals.message,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            data.visuals.actionLabel?.let { label ->
-                                TextButton(
-                                    onClick = { data.performAction() },
-                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                                    colors = ButtonDefaults.textButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.inversePrimary
-                                    )
-                                ) {
-                                    Text(label, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            floatingActionButton = {
-                FloatingActionButton(onClick = { showAdd = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add task")
-                }
-            }
-        ) { padding ->
-            val backSwipeThresholdPx = with(LocalDensity.current) { 42.dp.toPx() }
-            Box(
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                    .onGloballyPositioned { listRootOffset = it.positionInRoot() }
-                    .then(
-                        if (!pageReleaseAnimating) Modifier.pointerInput(
-                            onBack,
-                            screenSize,
-                            displayedMandatory,
-                            bonusTasks,
-                            displayPool
-                        ) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                val downInRoot = down.position + listRootOffset
-                                val startedOnTask = taskCardBounds.values.any {
-                                    it.contains(downInRoot)
-                                }
-                                if (startedOnTask) {
-                                    // Task cards own horizontal gestures exclusively.
-                                    // Page-back starts only in titles, gaps, padding,
-                                    // or otherwise empty list space.
-                                    while (true) {
-                                        val event = awaitPointerEvent(PointerEventPass.Final)
-                                        if (event.changes.none { it.pressed }) break
-                                    }
-                                    return@awaitEachGesture
-                                }
-
-                                var totalX = 0f
-                                var totalY = 0f
-                                var tracking = false
-                                while (true) {
-                                    val event = awaitPointerEvent(PointerEventPass.Final)
-                                    val change = event.changes.firstOrNull() ?: break
-                                    if (!change.pressed) break
-                                    if (!tracking && change.isConsumed) continue
-                                    val delta = change.position - change.previousPosition
-                                    totalX += delta.x
-                                    totalY += delta.y
-                                    if (!tracking) {
-                                        if (
-                                            totalX <= -8f &&
-                                            kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.15f
-                                        ) {
-                                            tracking = true
-                                            showingHomeUnderlay = true
-                                        } else if (
-                                            kotlin.math.abs(totalY) > kotlin.math.abs(totalX) * 1.10f
-                                        ) {
-                                            break
-                                        }
-                                    }
-                                    if (tracking) {
-                                        pageOffsetX = totalX.coerceIn(
-                                            -screenSize.width.toFloat().coerceAtLeast(1f),
-                                            0f
-                                        )
-                                        change.consume()
-                                    }
-                                }
-                                if (tracking) {
-                                    val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
-                                    val commit = kotlin.math.abs(pageOffsetX) >= widthPx / 2f ||
-                                        kotlin.math.abs(pageOffsetX) >= backSwipeThresholdPx
-                                    pageReleaseAnimating = true
-                                    scope.launch {
-                                        val startOffset = pageOffsetX
-                                        val targetOffset = if (commit) -widthPx else 0f
-                                        animate(
-                                            initialValue = startOffset,
-                                            targetValue = targetOffset,
-                                            animationSpec = tween(150)
-                                        ) { value, _ ->
-                                            pageOffsetX = value
-                                        }
-                                        if (commit) {
-                                            onBack()
-                                        } else {
-                                            pageOffsetX = 0f
-                                            showingHomeUnderlay = false
-                                            pageReleaseAnimating = false
-                                        }
-                                    }
-                                }
-                            }
-                        } else Modifier
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (overdueTasks.isNotEmpty()) {
+                item { SectionTitle("Overdue") }
+                items(overdueTasks, key = { "overdue-${it.id}" }) { task ->
+                    SwipeableTaskRow(
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            taskCardBounds[task.id] = coordinates.boundsInRoot()
+                        },
+                        task = task,
+                        tag = "OVERDUE",
+                        onEdit = { editing = task },
+                        onDelete = { deleteWithUndo(task) },
+                        onComplete = { completeWithUndo(task) }
                     )
-            ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                }
+                item { Spacer(Modifier.height(6.dp)) }
+            }
+
             displayedMandatory?.let { task ->
                 item { SectionTitle("Today") }
                 item(key = "today-${task.id}") {
@@ -481,7 +369,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 ) {
                     SectionTitle("Backlog")
                     Text(
-                        "Top item is next. Long-press any task card to drag; drag the first item upward to make it Today.",
+                        "Top item is next. Long-press a task to drag; release to drop.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -540,16 +428,15 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                                         if (previousToday != null && previousToday.id != task.id) {
                                             add(
                                                 sourceIndex.coerceIn(0, size),
-                                                previousToday.copy(slot = null)
+                                                previousToday.copy(slot = null, overdueSinceEpochDay = null)
                                             )
                                         }
                                     }.mapIndexed { newIndex, poolTask ->
                                         poolTask.copy(orderIndex = newIndex)
                                     }
 
-                                    // Membership changes only now, after finger release.
                                     localPool = updatedPool
-                                    pendingTodayTask = task.copy(slot = 0)
+                                    pendingTodayTask = task.copy(slot = 0, overdueSinceEpochDay = null)
                                     pendingPreviousTodayId = previousToday?.id
                                     pendingPersistedOrder = null
                                     viewModel.replaceTodayWith(task.id, updatedPool.map { it.id })
@@ -564,11 +451,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     }
                 )
             }
-                }
-            }
         }
     }
-
 
     if (showAdd) {
         AddEditTaskDialog(
@@ -858,8 +742,11 @@ private fun TaskRow(
 
 @Composable
 private fun StatusPill(tag: String) {
+    val overdue = tag == "OVERDUE"
+    val content = if (overdue) Color(0xFFB4233A) else MaterialTheme.colorScheme.primary
+    val container = if (overdue) Color(0xFFFFE7EC) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
     Surface(
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        color = container,
         shape = RoundedCornerShape(50)
     ) {
         Text(
@@ -867,7 +754,7 @@ private fun StatusPill(tag: String) {
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
+            color = content,
             maxLines = 1,
             softWrap = false
         )

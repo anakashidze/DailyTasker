@@ -9,11 +9,14 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isArchived = 0 ORDER BY orderIndex ASC")
     fun observeAllTasks(): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE isArchived = 0 AND slot IS NOT NULL ORDER BY slot ASC")
+    @Query("SELECT * FROM tasks WHERE isArchived = 0 AND overdueSinceEpochDay IS NULL AND slot IS NOT NULL ORDER BY slot ASC")
     fun observeActiveSlots(): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE isArchived = 0 AND slot IS NULL ORDER BY orderIndex ASC")
+    @Query("SELECT * FROM tasks WHERE isArchived = 0 AND slot IS NULL AND overdueSinceEpochDay IS NULL ORDER BY orderIndex ASC")
     fun observePool(): Flow<List<Task>>
+
+    @Query("SELECT * FROM tasks WHERE isArchived = 0 AND overdueSinceEpochDay IS NOT NULL ORDER BY overdueSinceEpochDay ASC, orderIndex ASC")
+    fun observeOverdue(): Flow<List<Task>>
 
     @Query("SELECT * FROM tasks WHERE id = :id")
     suspend fun getById(id: Long): Task?

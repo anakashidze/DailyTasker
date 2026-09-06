@@ -16,17 +16,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -37,60 +39,95 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
-import kotlinx.coroutines.launch
+
+private enum class HubPage(val index: Int) {
+    TASKS(0), HOME(1), HISTORY(2)
+}
+
+private enum class HubGesture { LEFT, RIGHT, DOWN }
 
 /**
- * "One Thing"-style layout: one giant task fills almost the whole screen,
- * nearly no chrome, a single accent color, one big tap-to-complete action.
- * Secondary nav (list/settings) is reduced to two small icons that fade
- * into the background instead of a normal toolbar/bottom bar.
+ * One persistent three-page surface (Tasks <-> Home <-> History).
+ * Pages never get recreated during a horizontal gesture, so the finger tracking,
+ * release settle, and final page are one continuous motion with no route flash.
  */
-private enum class HomeSwipeDirection { LEFT, RIGHT, DOWN }
-
 @Composable
 fun HomeScreen(
     viewModel: TaskViewModel,
-    onOpenList: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenSettings: () -> Unit,
-    gesturesEnabled: Boolean = true
+    onOpenSettings: () -> Unit
 ) {
     val mandatory by viewModel.mandatoryTask.collectAsState()
     val bonusTasks by viewModel.bonusTasks.collectAsState()
     val dayComplete by viewModel.dayComplete.collectAsState()
+    val streakCount by viewModel.streakCount.collectAsState()
     val showTomorrowPicker by viewModel.showTomorrowPicker.collectAsState()
     val pool by viewModel.pool.collectAsState()
     val taskGroups by viewModel.taskGroups.collectAsState()
+
+    var currentPage by remember { mutableStateOf(HubPage.HOME) }
+    var screenSize by remember { mutableStateOf(IntSize.Zero) }
+    var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    var pullOffset by remember { mutableFloatStateOf(0f) }
+    var settling by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
 
-    val accent = remember(mandatory?.colorHex) {
-        mandatory?.colorHex?.let {
-            try { Color(android.graphics.Color.parseColor(it)) } catch (e: Exception) { null }
-        } ?: Color(0xFF22C55E)
-    }
-    val bgTint by animateFloatAsState(if (dayComplete) 0.14f else 0.06f, tween(500), label = "bg")
-
     val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val directionLockPx = with(density) { 10.dp.toPx() }
     val swipeThresholdPx = with(density) { 36.dp.toPx() }
-    val directionLockPx = with(density) { 8.dp.toPx() }
     val pullToAddThresholdPx = with(density) { 84.dp.toPx() }
-
-    var screenSize by remember { mutableStateOf(IntSize.Zero) }
-    var activeDirection by remember { mutableStateOf<HomeSwipeDirection?>(null) }
-    var horizontalOffset by remember { mutableFloatStateOf(0f) }
-    var verticalOffset by remember { mutableFloatStateOf(0f) }
-    var pullOffset by remember { mutableFloatStateOf(0f) }
-    var releaseAnimating by remember { mutableStateOf(false) }
-
     val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
-    val heightPx = screenSize.height.toFloat().coerceAtLeast(1f)
     val pullProgress = (pullOffset / pullToAddThresholdPx).coerceIn(0f, 1f)
+
+    fun targetForHorizontal(totalX: Float): HubPage? = when (currentPage) {
+        HubPage.HOME -> when {
+            totalX < 0f -> HubPage.HISTORY
+            totalX > 0f -> HubPage.TASKS
+            else -> null
+        }
+        HubPage.HISTORY -> if (totalX > 0f) HubPage.HOME else null
+        HubPage.TASKS -> if (totalX < 0f) HubPage.HOME else null
+    }
+
+    fun settleToPage(target: HubPage, initialOffset: Float = dragOffsetX) {
+        if (settling || target == currentPage) return
+        settling = true
+        scope.launch {
+            val targetOffset = (currentPage.index - target.index) * widthPx
+            animate(
+                initialValue = initialOffset,
+                targetValue = targetOffset,
+                animationSpec = tween(150)
+            ) { value, _ -> dragOffsetX = value }
+            currentPage = target
+            dragOffsetX = 0f
+            settling = false
+        }
+    }
+
+    fun cancelHorizontal(initialOffset: Float = dragOffsetX) {
+        if (settling) return
+        settling = true
+        scope.launch {
+            animate(
+                initialValue = initialOffset,
+                targetValue = 0f,
+                animationSpec = tween(135)
+            ) { value, _ -> dragOffsetX = value }
+            dragOffsetX = 0f
+            settling = false
+        }
+    }
+
+    BackHandler(enabled = currentPage != HubPage.HOME && !settling) {
+        settleToPage(HubPage.HOME, 0f)
+    }
 
     Box(
         modifier = Modifier
@@ -98,248 +135,135 @@ fun HomeScreen(
             .background(MaterialTheme.colorScheme.background)
             .onSizeChanged { screenSize = it }
             .then(
-                if (gesturesEnabled && !releaseAnimating) Modifier.pointerInput(
-                    onOpenList,
-                    onOpenHistory,
-                    screenSize,
-                    swipeThresholdPx,
-                    directionLockPx,
-                    pullToAddThresholdPx
-                ) {
-                    awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    var totalX = 0f
-                    var totalY = 0f
-                    var direction: HomeSwipeDirection? = null
-                    var pullHapticSent = false
-
-                    // Every gesture starts from a clean coordinate system. This also
-                    // prevents a previous partial swipe from influencing the next touch.
-                    horizontalOffset = 0f
-                    verticalOffset = 0f
-                    pullOffset = 0f
-
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Final)
-                        val change = event.changes.firstOrNull() ?: break
-                        if (!change.pressed) break
-
-                        // If a child has already claimed the gesture (for example a
-                        // task action), keep page navigation out of the way.
-                        if (direction == null && change.isConsumed) continue
-
-                        val delta = change.position - change.previousPosition
-                        totalX += delta.x
-                        totalY += delta.y
-
-                        if (direction == null) {
-                            val horizontalEnough = abs(totalX) >= directionLockPx &&
-                                abs(totalX) > abs(totalY) * 1.10f
-                            val verticalEnough = abs(totalY) >= directionLockPx &&
-                                abs(totalY) > abs(totalX) * 1.10f
-
-                            direction = when {
-                                horizontalEnough && totalX < 0f -> HomeSwipeDirection.LEFT
-                                horizontalEnough && totalX > 0f -> HomeSwipeDirection.RIGHT
-                                verticalEnough && totalY > 0f -> HomeSwipeDirection.DOWN
-                                else -> null
-                            }
-                            if (direction != null) activeDirection = direction
-                        }
-
-                        // These are ordinary Compose state writes rather than suspending
-                        // Animatable calls. That keeps the page attached 1:1 to the finger
-                        // and is legal inside the restricted pointer-event scope.
-                        when (direction) {
-                            HomeSwipeDirection.LEFT -> {
-                                horizontalOffset = totalX.coerceIn(-widthPx, 0f)
-                                change.consume()
-                            }
-                            HomeSwipeDirection.RIGHT -> {
-                                horizontalOffset = totalX.coerceIn(0f, widthPx)
-                                change.consume()
-                            }
-                            HomeSwipeDirection.DOWN -> {
-                                // Pull-down is a fill-to-arm action, not a page transition.
-                                val pulled = totalY.coerceAtLeast(0f)
-                                    .coerceAtMost(pullToAddThresholdPx * 1.18f)
-                                pullOffset = pulled
-                                if (pulled >= pullToAddThresholdPx && !pullHapticSent) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    pullHapticSent = true
-                                }
-                                change.consume()
-                            }
-                            null -> Unit
-                        }
-                    }
-
-                    // Commit only on release. If the page has not crossed the configured
-                    // swipe threshold it simply returns to Home. Navigation itself is
-                    // immediate so there is no post-release delay.
-                    when (direction) {
-                        HomeSwipeDirection.LEFT -> {
-                            val distance = abs(horizontalOffset)
-                            val commit = distance >= widthPx / 2f || distance >= swipeThresholdPx
-                            releaseAnimating = true
-                            scope.launch {
-                                val start = horizontalOffset
-                                val target = if (commit) -widthPx else 0f
-                                animate(start, target, animationSpec = tween(150)) { value, _ ->
-                                    horizontalOffset = value
-                                }
-                                if (commit) {
-                                    // Keep Home fully off-screen until Navigation disposes this
-                                    // composable. Resetting here caused the one-frame Home flash.
-                                    onOpenHistory()
-                                } else {
-                                    horizontalOffset = 0f
-                                    activeDirection = null
-                                    releaseAnimating = false
-                                }
-                            }
-                        }
-                        HomeSwipeDirection.RIGHT -> {
-                            val distance = abs(horizontalOffset)
-                            val commit = distance >= widthPx / 2f || distance >= swipeThresholdPx
-                            releaseAnimating = true
-                            scope.launch {
-                                val start = horizontalOffset
-                                val target = if (commit) widthPx else 0f
-                                animate(start, target, animationSpec = tween(150)) { value, _ ->
-                                    horizontalOffset = value
-                                }
-                                if (commit) {
-                                    // Do not snap back to Home before the destination route is ready.
-                                    onOpenList()
-                                } else {
-                                    horizontalOffset = 0f
-                                    activeDirection = null
-                                    releaseAnimating = false
-                                }
-                            }
-                        }
-                        HomeSwipeDirection.DOWN -> {
-                            val armed = pullOffset >= pullToAddThresholdPx
+                if (!settling) {
+                    Modifier.pointerInput(
+                        currentPage,
+                        screenSize,
+                        directionLockPx,
+                        swipeThresholdPx,
+                        pullToAddThresholdPx
+                    ) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var totalX = 0f
+                            var totalY = 0f
+                            var gesture: HubGesture? = null
+                            var horizontalTarget: HubPage? = null
+                            var pullHapticSent = false
+                            dragOffsetX = 0f
                             pullOffset = 0f
-                            activeDirection = null
-                            if (armed) showAdd = true
-                        }
-                        null -> Unit
-                    }
-                }
-            } else Modifier
-        )
-    ) {
-        // The destination page is actually rendered behind Home and translated with
-        // the finger. This gives the same direct-manipulation feel as a pager instead
-        // of navigating as soon as a distance threshold is crossed.
-        when (activeDirection) {
-            HomeSwipeDirection.LEFT -> {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { translationX = widthPx + horizontalOffset }
-                ) {
-                    HistoryScreen(viewModel = viewModel, onBack = {})
-                }
-            }
-            HomeSwipeDirection.RIGHT -> {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { translationX = -widthPx + horizontalOffset }
-                ) {
-                    TaskListScreen(viewModel = viewModel, onBack = {})
-                }
-            }
-            HomeSwipeDirection.DOWN, null -> Unit
-        }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    translationX = when (activeDirection) {
-                        HomeSwipeDirection.LEFT, HomeSwipeDirection.RIGHT -> horizontalOffset
-                        else -> 0f
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                val change = event.changes.firstOrNull() ?: break
+                                if (!change.pressed) break
+
+                                // A task card owns its own horizontal swipe/drag. The page
+                                // gesture only starts when child content has not consumed it.
+                                if (gesture == null && change.isConsumed) continue
+
+                                val delta = change.position - change.previousPosition
+                                totalX += delta.x
+                                totalY += delta.y
+
+                                if (gesture == null) {
+                                    val horizontalEnough = abs(totalX) >= directionLockPx &&
+                                        abs(totalX) > abs(totalY) * 1.12f
+                                    val downwardEnough = currentPage == HubPage.HOME &&
+                                        totalY >= directionLockPx &&
+                                        abs(totalY) > abs(totalX) * 1.12f
+
+                                    if (horizontalEnough) {
+                                        val target = targetForHorizontal(totalX)
+                                        if (target != null) {
+                                            horizontalTarget = target
+                                            gesture = if (totalX < 0f) HubGesture.LEFT else HubGesture.RIGHT
+                                        }
+                                    } else if (downwardEnough) {
+                                        gesture = HubGesture.DOWN
+                                    }
+                                }
+
+                                when (gesture) {
+                                    HubGesture.LEFT, HubGesture.RIGHT -> {
+                                        val target = horizontalTarget
+                                        if (target != null) {
+                                            val targetOffset = (currentPage.index - target.index) * widthPx
+                                            dragOffsetX = if (targetOffset < 0f) {
+                                                totalX.coerceIn(targetOffset, 0f)
+                                            } else {
+                                                totalX.coerceIn(0f, targetOffset)
+                                            }
+                                            change.consume()
+                                        }
+                                    }
+                                    HubGesture.DOWN -> {
+                                        val pulled = totalY.coerceAtLeast(0f)
+                                            .coerceAtMost(pullToAddThresholdPx * 1.18f)
+                                        pullOffset = pulled
+                                        if (pulled >= pullToAddThresholdPx && !pullHapticSent) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            pullHapticSent = true
+                                        }
+                                        change.consume()
+                                    }
+                                    null -> Unit
+                                }
+                            }
+
+                            when (gesture) {
+                                HubGesture.LEFT, HubGesture.RIGHT -> {
+                                    val target = horizontalTarget
+                                    if (target != null) {
+                                        val commit = abs(dragOffsetX) >= widthPx / 2f ||
+                                            abs(dragOffsetX) >= swipeThresholdPx
+                                        if (commit) settleToPage(target, dragOffsetX)
+                                        else cancelHorizontal(dragOffsetX)
+                                    }
+                                }
+                                HubGesture.DOWN -> {
+                                    val armed = pullOffset >= pullToAddThresholdPx
+                                    pullOffset = 0f
+                                    if (armed) showAdd = true
+                                }
+                                null -> Unit
+                            }
+                        }
                     }
-                    translationY = 0f
-                }
-                .background(accent.copy(alpha = bgTint))
-        ) {
-            Column(
+                } else Modifier
+            )
+    ) {
+        HubPage.entries.forEach { page ->
+            val translation = (page.index - currentPage.index) * widthPx + dragOffsetX
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .safeDrawingPadding()
-                    .padding(24.dp)
+                    .graphicsLayer { translationX = translation }
             ) {
-                Text(
-                    DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault()).format(LocalDate.now()),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    when {
-                        dayComplete -> DayCompleteHero(accent)
-                        mandatory != null -> mandatory?.let { task ->
-                            OneThingHero(
-                                task = task,
-                                accent = accent,
-                                onDone = { viewModel.completeMandatory(task.id) }
-                            )
-                        }
-                        else -> Text(
-                            "Nothing set for today.\nAdd one thing.",
-                            style = MaterialTheme.typography.headlineSmall,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                if (bonusTasks.isNotEmpty()) {
-                    Text(
-                        "Also today",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                when (page) {
+                    HubPage.TASKS -> TaskListScreen(
+                        viewModel = viewModel,
+                        onBack = { settleToPage(HubPage.HOME, 0f) }
                     )
-                    Spacer(Modifier.height(6.dp))
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.heightIn(max = 140.dp)
-                    ) {
-                        items(bonusTasks, key = { it.id }) { task ->
-                            BonusTaskRow(task = task, onDone = { viewModel.completeBonus(task.id) })
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    IconButton(onClick = onOpenList) {
-                        Icon(
-                            Icons.Default.List,
-                            contentDescription = "Task list",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    HubPage.HISTORY -> HistoryScreen(
+                        viewModel = viewModel,
+                        onBack = { settleToPage(HubPage.HOME, 0f) }
+                    )
+                    HubPage.HOME -> HomePageContent(
+                        mandatory = mandatory,
+                        bonusTasks = bonusTasks,
+                        dayComplete = dayComplete,
+                        streakCount = streakCount,
+                        onCompleteMandatory = { viewModel.completeMandatory(it) },
+                        onCompleteBonus = { viewModel.completeBonus(it) },
+                        onOpenTasks = { settleToPage(HubPage.TASKS, 0f) },
+                        onOpenSettings = onOpenSettings
+                    )
                 }
             }
         }
 
-        if (pullProgress > 0f) {
+        if (currentPage == HubPage.HOME && pullProgress > 0f) {
             PullToAddIndicator(
                 progress = pullProgress,
                 modifier = Modifier
@@ -382,6 +306,133 @@ fun HomeScreen(
             onPick = { viewModel.setTomorrowTask(it) },
             onDismiss = { viewModel.dismissTomorrowPicker() }
         )
+    }
+}
+
+@Composable
+private fun HomePageContent(
+    mandatory: Task?,
+    bonusTasks: List<Task>,
+    dayComplete: Boolean,
+    streakCount: Int,
+    onCompleteMandatory: (Long) -> Unit,
+    onCompleteBonus: (Long) -> Unit,
+    onOpenTasks: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val accent = remember(mandatory?.colorHex) {
+        mandatory?.colorHex?.let {
+            try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
+        } ?: Color(0xFF22C55E)
+    }
+    val bgTint by animateFloatAsState(
+        targetValue = if (dayComplete) 0.14f else 0.06f,
+        animationSpec = tween(350),
+        label = "home-bg"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .background(accent.copy(alpha = bgTint))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault()).format(LocalDate.now()),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        "Streak",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.LocalFireDepartment,
+                            contentDescription = null,
+                            tint = Color(0xFFFF7A2F),
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Text(
+                            if (streakCount == 1) "1 day" else "$streakCount days",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                when {
+                    dayComplete -> DayCompleteHero(accent)
+                    mandatory != null -> OneThingHero(
+                        task = mandatory,
+                        accent = accent,
+                        onDone = { onCompleteMandatory(mandatory.id) }
+                    )
+                    else -> Text(
+                        "Nothing set for today.\nAdd one thing.",
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (bonusTasks.isNotEmpty()) {
+                Text(
+                    "Also today",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.heightIn(max = 140.dp)
+                ) {
+                    items(bonusTasks, key = { it.id }) { task ->
+                        BonusTaskRow(task = task, onDone = { onCompleteBonus(task.id) })
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                IconButton(onClick = onOpenTasks) {
+                    Icon(
+                        Icons.Default.List,
+                        contentDescription = "Task list",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
 

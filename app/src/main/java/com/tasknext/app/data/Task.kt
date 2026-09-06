@@ -21,5 +21,7 @@ data class Task(
     val reminderEnabled: Boolean = true,
     val orderIndex: Int = 0,
     val slot: Int? = null,
+    /** Local calendar day on which an unfinished Today task became overdue. */
+    val overdueSinceEpochDay: Long? = null,
     val isArchived: Boolean = false
 )

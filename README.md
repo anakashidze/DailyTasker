@@ -66,3 +66,7 @@ The included debug keystore is for consistent testing builds only; it is not a p
 ## Home-screen widget
 
 TaskNext includes a compact 2x1 **Today** widget for the Android home screen. It uses a rounded blue-to-indigo gradient, shows the current Today task (or day-complete/empty state), and opens TaskNext when tapped. The widget refreshes when Today changes.
+
+
+## v1.8.0
+Persistent swipe pages, daily streak, widget streak, and Overdue tasks. See `FIXES_1.8.0.md`.

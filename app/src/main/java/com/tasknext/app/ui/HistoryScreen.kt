@@ -1,11 +1,7 @@
 package com.tasknext.app.ui
 
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,21 +16,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.tasknext.app.data.CompletionLog
 import com.tasknext.app.data.Priority
 import com.tasknext.app.viewmodel.TaskViewModel
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.abs
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,168 +31,76 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val groupByDay = viewModel.settings.groupHistoryByDay
     var confirmClearAll by remember { mutableStateOf(false) }
     var selectedLog by remember { mutableStateOf<CompletionLog?>(null) }
-    val swipeThresholdPx = with(LocalDensity.current) { 36.dp.toPx() }
-    val scope = rememberCoroutineScope()
-    var screenSize by remember { mutableStateOf(IntSize.Zero) }
-    var horizontalOffset by remember { mutableFloatStateOf(0f) }
-    var showingHomeUnderlay by remember { mutableStateOf(false) }
-    var releaseAnimating by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onSizeChanged { screenSize = it }
-    ) {
-        if (showingHomeUnderlay || horizontalOffset > 0f) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        translationX = -screenSize.width.toFloat().coerceAtLeast(1f) + horizontalOffset
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text("History") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back to Home")
                     }
-            ) {
-                HomeScreen(
-                    viewModel = viewModel,
-                    onOpenList = {},
-                    onOpenHistory = {},
-                    onOpenSettings = {},
-                    gesturesEnabled = false
-                )
-            }
-        }
-
-        Scaffold(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { translationX = horizontalOffset }
-                .then(
-                    if (!releaseAnimating) Modifier.pointerInput(onBack, screenSize) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            var totalX = 0f
-                            var totalY = 0f
-                            var tracking = false
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Final)
-                                val change = event.changes.firstOrNull() ?: break
-                                if (!change.pressed) break
-                                if (!tracking && change.isConsumed) continue
-                                val delta = change.position - change.previousPosition
-                                totalX += delta.x
-                                totalY += delta.y
-                                if (!tracking) {
-                                    if (totalX >= 8f && abs(totalX) > abs(totalY) * 1.10f) {
-                                        tracking = true
-                                        showingHomeUnderlay = true
-                                    } else if (abs(totalY) > abs(totalX) * 1.10f) {
-                                        break
-                                    }
-                                }
-                                if (tracking) {
-                                    horizontalOffset = totalX.coerceIn(
-                                        0f,
-                                        screenSize.width.toFloat().coerceAtLeast(1f)
-                                    )
-                                    change.consume()
-                                }
-                            }
-                            if (tracking) {
-                                val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
-                                val commit = horizontalOffset >= widthPx / 2f ||
-                                    horizontalOffset >= swipeThresholdPx
-                                releaseAnimating = true
-                                scope.launch {
-                                    val startOffset = horizontalOffset
-                                    val targetOffset = if (commit) widthPx else 0f
-                                    animate(
-                                        initialValue = startOffset,
-                                        targetValue = targetOffset,
-                                        animationSpec = tween(150)
-                                    ) { value, _ ->
-                                        horizontalOffset = value
-                                    }
-                                    if (commit) {
-                                        onBack()
-                                    } else {
-                                        horizontalOffset = 0f
-                                        showingHomeUnderlay = false
-                                        releaseAnimating = false
-                                    }
-                                }
-                            }
-                        }
-                    } else Modifier
-                ),
-            topBar = {
-                TopAppBar(
-                    title = { Text("History") },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        if (history.isNotEmpty()) {
-                            IconButton(onClick = { confirmClearAll = true }) {
-                                Icon(Icons.Default.DeleteSweep, contentDescription = "Clear history")
-                            }
+                },
+                actions = {
+                    if (history.isNotEmpty()) {
+                        IconButton(onClick = { confirmClearAll = true }) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "Clear history")
                         }
                     }
-                )
-            }
-        ) { padding ->
-            val dayFormat = remember { SimpleDateFormat("EEEE, MMM d yyyy", Locale.getDefault()) }
-            val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-            val fullFormat = remember { SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()) }
-
-            if (history.isEmpty()) {
-                Box(
-                    Modifier
-                        .padding(padding)
-                        .fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("No completed tasks yet.")
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .padding(padding)
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (groupByDay) {
-                        val grouped = history.groupBy {
-                            dayFormat.format(Date(it.completedAtEpochMillis))
+            )
+        }
+    ) { padding ->
+        val dayFormat = remember { SimpleDateFormat("EEEE, MMM d yyyy", Locale.getDefault()) }
+        val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+        val fullFormat = remember { SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()) }
+
+        if (history.isEmpty()) {
+            Box(
+                Modifier.padding(padding).fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No completed tasks yet.")
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (groupByDay) {
+                    val grouped = history.groupBy {
+                        dayFormat.format(Date(it.completedAtEpochMillis))
+                    }
+                    grouped.forEach { (day, logs) ->
+                        item {
+                            Text(
+                                day,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                            )
                         }
-                        grouped.forEach { (day, logs) ->
-                            item {
-                                Text(
-                                    day,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                                )
-                            }
-                            items(logs, key = { it.id }) { log ->
-                                HistoryRow(
-                                    log = log,
-                                    timeFormat = timeFormat,
-                                    onOpen = { selectedLog = log },
-                                    onDelete = { viewModel.deleteHistoryRecord(log.id) }
-                                )
-                            }
-                        }
-                    } else {
-                        items(history, key = { it.id }) { log ->
+                        items(logs, key = { it.id }) { log ->
                             HistoryRow(
                                 log = log,
-                                timeFormat = fullFormat,
+                                timeFormat = timeFormat,
                                 onOpen = { selectedLog = log },
                                 onDelete = { viewModel.deleteHistoryRecord(log.id) }
                             )
                         }
+                    }
+                } else {
+                    items(history, key = { it.id }) { log ->
+                        HistoryRow(
+                            log = log,
+                            timeFormat = fullFormat,
+                            onOpen = { selectedLog = log },
+                            onDelete = { viewModel.deleteHistoryRecord(log.id) }
+                        )
                     }
                 }
             }

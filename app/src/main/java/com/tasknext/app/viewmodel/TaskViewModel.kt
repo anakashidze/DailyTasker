@@ -36,6 +36,9 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     val pool = repo.observePool()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val overdueTasks = repo.observeOverdue()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allTasks = repo.observeAllTasks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -47,6 +50,9 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _dayComplete = MutableStateFlow(false)
     val dayComplete: StateFlow<Boolean> = _dayComplete
+
+    private val _streakCount = MutableStateFlow(repo.currentStreakCount())
+    val streakCount: StateFlow<Int> = _streakCount
 
     private val _showTomorrowPicker = MutableStateFlow(false)
     val showTomorrowPicker: StateFlow<Boolean> = _showTomorrowPicker
@@ -63,6 +69,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun onAppResumed() = viewModelScope.launch {
         repo.rolloverDayIfNeeded()
         _dayComplete.value = repo.isDayComplete()
+        _streakCount.value = repo.currentStreakCount()
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         syncReminderAlarms()
         refreshTodayWidget()
@@ -151,11 +158,20 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun undoCompletion(
         task: Task,
         previousQueuedTomorrowTaskId: Long,
-        previousDayCompletedEpochDay: Long
+        previousDayCompletedEpochDay: Long,
+        previousStreakCount: Int,
+        previousStreakLastCompletedEpochDay: Long
     ) = viewModelScope.launch {
-        repo.undoCompletion(task, previousQueuedTomorrowTaskId, previousDayCompletedEpochDay)
+        repo.undoCompletion(
+            task,
+            previousQueuedTomorrowTaskId,
+            previousDayCompletedEpochDay,
+            previousStreakCount,
+            previousStreakLastCompletedEpochDay
+        )
         repo.getTask(task.id)?.let { syncTaskReminder(it) }
         _dayComplete.value = repo.isDayComplete()
+        _streakCount.value = repo.currentStreakCount()
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         _showTomorrowPicker.value = false
         refreshTodayWidget()
@@ -220,6 +236,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         val previousSlot = repo.completeFromList(taskId)
         if (previousSlot == 0) {
             _dayComplete.value = true
+            _streakCount.value = repo.currentStreakCount()
             if (settings.autoFillNextTask) {
                 repo.suggestNext()?.let { repo.setTomorrowTask(it.id) }
                 _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
@@ -237,6 +254,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         NotificationScheduler.cancel(getApplication(), taskId)
         repo.completeMandatory(taskId)
         _dayComplete.value = true
+        _streakCount.value = repo.currentStreakCount()
 
         if (settings.autoFillNextTask) {
             repo.suggestNext()?.let { repo.setTomorrowTask(it.id) }
