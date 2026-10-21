@@ -71,4 +71,13 @@
     <string name="add_new_group">ახალი ჯგუფის დამატება</string>
     <string name="select_time">დროის არჩევა</string>
     <string name="ok">კარგი</string>
+    <string name="next_tasks_description">დიდი დავალებები მარჯვნივ ნაჩვენებ განრიგს მიჰყვება. გადაალაგეთ ისინი და თარიღები პოზიციებთან ერთად შეიცვლება.</string>
+    <string name="no_big_tasks">დაგეგმილი დიდი დავალებები არ არის.</string>
+    <string name="bonus_backlog_description">პატარა დავალებები აქ ინახება. ვარსკვლავით დაამატეთ ერთ-ერთი დღევანდელ ბონუსებში.</string>
+    <string name="no_small_tasks">ბონუს სიაში პატარა დავალებები არ არის.</string>
+    <string name="drag_to_next_tasks">დიდხანს დააჭირეთ და გადაიტანეთ შემდეგ დავალებებში</string>
+    <string name="drag_to_bonus_backlog">დიდხანს დააჭირეთ და გადაიტანეთ ბონუს სიაში</string>
+    <string name="drag_to_reorder">დიდხანს დააჭირეთ და გადაალაგეთ</string>
+    <string name="complete">შესრულება</string>
+    <string name="delete">წაშლა</string>
 </resources>
