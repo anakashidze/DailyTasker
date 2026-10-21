@@ -107,4 +107,5 @@
     <string name="notification_streak_title">თქვენი სერია რისკის ქვეშაა</string>
     <string name="notification_streak_body">თქვენი %1$d-დღიანი სერია ჯერ ღიაა. შეასრულეთ დღევანდელი დავალება ან გამოიყენეთ დასვენების კრედიტი.</string>
     <string name="notification_today_open_body">დღე ჯერ ღიაა. შეასრულეთ დიდი დავალება ან გამოიყენეთ დასვენების კრედიტი.</string>
+    <string name="widget_overdue_count">%1$d ვადაგადაცილებული დავალება საჭიროებს ყურადღებას</string>
 </resources>
