@@ -101,4 +101,10 @@
     <string name="complete_overdue_question">Эта задача со вчерашнего дня. Когда вы её выполнили?</string>
     <string name="completed_yesterday">Выполнено вчера</string>
     <string name="complete_today">Выполнить сегодня</string>
+    <string name="notification_planning_channel">Напоминания о планировании</string>
+    <string name="notification_plan_title">Спланируйте завтра</string>
+    <string name="notification_plan_body">Добавьте или выберите большую задачу на завтра.</string>
+    <string name="notification_streak_title">Серия под угрозой</string>
+    <string name="notification_streak_body">Ваша серия из %1$d дней ещё не защищена. Выполните задачу на сегодня или используйте кредит отдыха.</string>
+    <string name="notification_today_open_body">Сегодняшний день ещё не закрыт. Выполните большую задачу или используйте кредит отдыха.</string>
 </resources>
