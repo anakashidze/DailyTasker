@@ -45,7 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.tasknext.app.data.Priority
+import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
 import kotlinx.coroutines.launch
@@ -463,13 +463,13 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             onAddGroup = { viewModel.addCustomGroup(it) },
             onRemoveGroup = { viewModel.removeCustomGroup(it) },
             onDismiss = { showAdd = false },
-            onSave = { title, group, priority, comment, remOn, h, m ->
+            onSave = { title, group, taskSize, comment, remOn, h, m ->
                 viewModel.addTask(
                     title = title,
                     colorHex = group.colorHex,
                     groupName = group.name,
                     groupIcon = group.iconKey,
-                    priority = priority,
+                    taskSize = taskSize,
                     comment = comment,
                     reminderEnabled = remOn,
                     hour = h,
@@ -489,14 +489,14 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             onAddGroup = { viewModel.addCustomGroup(it) },
             onRemoveGroup = { viewModel.removeCustomGroup(it) },
             onDismiss = { editing = null },
-            onSave = { title, group, priority, comment, remOn, h, m ->
+            onSave = { title, group, taskSize, comment, remOn, h, m ->
                 viewModel.updateTask(
                     task.copy(
                         title = title,
                         colorHex = group.colorHex,
                         groupName = group.name,
                         groupIcon = group.iconKey,
-                        priority = priority,
+                        taskSize = taskSize,
                         comment = comment,
                         reminderEnabled = remOn,
                         reminderHour = h,
@@ -710,7 +710,7 @@ private fun TaskRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                PriorityPill(task.priority)
+                TaskSizePill(task.taskSize)
                 Text(
                     task.groupName,
                     style = MaterialTheme.typography.labelSmall,
@@ -762,8 +762,8 @@ private fun StatusPill(tag: String) {
 }
 
 @Composable
-private fun PriorityPill(priority: Priority) {
-    val palette = priorityPalette(priority)
+private fun TaskSizePill(taskSize: TaskSize) {
+    val palette = taskSizePalette(taskSize)
     Surface(
         color = palette.container,
         contentColor = palette.content,
@@ -780,7 +780,7 @@ private fun PriorityPill(priority: Priority) {
                     .background(palette.content, CircleShape)
             )
             Text(
-                priority.name.lowercase().replaceFirstChar { it.uppercase() },
+                taskSize.name.lowercase().replaceFirstChar { it.uppercase() },
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = palette.content
