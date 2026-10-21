@@ -17,9 +17,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.tasknext.app.R
 import com.tasknext.app.data.CompletionLog
-import com.tasknext.app.data.Priority
+import com.tasknext.app.data.TaskSize
 import com.tasknext.app.viewmodel.TaskViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -36,16 +38,16 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("History") },
+                title = { Text(stringResource(R.string.history)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back to Home")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
                     if (history.isNotEmpty()) {
                         IconButton(onClick = { confirmClearAll = true }) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = "Clear history")
+                            Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.clear_history))
                         }
                     }
                 }
@@ -61,7 +63,7 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 Modifier.padding(padding).fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("No completed tasks yet.")
+                Text(stringResource(R.string.no_history))
             }
         } else {
             LazyColumn(
@@ -114,18 +116,18 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     if (confirmClearAll) {
         AlertDialog(
             onDismissRequest = { confirmClearAll = false },
-            title = { Text("Clear history?") },
-            text = { Text("This removes all completion records. Your active tasks are not affected.") },
+            title = { Text(stringResource(R.string.clear_history_question)) },
+            text = { Text(stringResource(R.string.clear_history_description)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         viewModel.clearHistory()
                         confirmClearAll = false
                     }
-                ) { Text("Clear") }
+                ) { Text(stringResource(R.string.clear)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmClearAll = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmClearAll = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -176,7 +178,7 @@ private fun HistoryRow(
         IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
             Icon(
                 Icons.Default.Delete,
-                contentDescription = "Remove history record",
+                contentDescription = stringResource(R.string.delete),
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -186,9 +188,6 @@ private fun HistoryRow(
 @Composable
 private fun HistoryDetailDialog(log: CompletionLog, onDismiss: () -> Unit) {
     val color = historyColor(log.colorHexSnapshot)
-    val priority = remember(log.prioritySnapshot) {
-        runCatching { Priority.valueOf(log.prioritySnapshot) }.getOrDefault(Priority.MEDIUM)
-    }
     val completedFormat = remember { SimpleDateFormat("EEEE, MMM d yyyy • HH:mm", Locale.getDefault()) }
 
     AlertDialog(
@@ -217,7 +216,10 @@ private fun HistoryDetailDialog(log: CompletionLog, onDismiss: () -> Unit) {
                     Column {
                         Text(log.groupNameSnapshot, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "${priority.name.lowercase().replaceFirstChar { it.uppercase() }} priority",
+                            stringResource(
+                                if (log.taskSizeSnapshot == TaskSize.BIG) R.string.task_size_big
+                                else R.string.task_size_small
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -226,13 +228,13 @@ private fun HistoryDetailDialog(log: CompletionLog, onDismiss: () -> Unit) {
 
                 if (log.commentSnapshot.isNotBlank()) {
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Comment", style = MaterialTheme.typography.labelMedium)
+                        Text(stringResource(R.string.comment), style = MaterialTheme.typography.labelMedium)
                         Text(log.commentSnapshot, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("Completed", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.completed), style = MaterialTheme.typography.labelMedium)
                     Text(
                         completedFormat.format(Date(log.completedAtEpochMillis)),
                         style = MaterialTheme.typography.bodyMedium
@@ -241,7 +243,7 @@ private fun HistoryDetailDialog(log: CompletionLog, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         }
     )
 }
