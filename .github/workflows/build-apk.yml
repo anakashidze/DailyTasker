@@ -3,10 +3,19 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - "chatgpt/**"
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
+
+concurrency:
+  group: tasknext-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -35,11 +44,36 @@ jobs:
           cache-provider: basic
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Verify APK integrity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          echo "=== APK file ==="
+          ls -lh "$APK"
+          file "$APK"
+
+          echo "=== ZIP alignment ==="
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 "$APK"
+
+          echo "=== Manifest / package ==="
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | head -n 20
+
+          echo "=== Signature ==="
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+
+          echo "=== SHA-256 ==="
+          sha256sum "$APK" | tee app/build/outputs/apk/debug/app-debug.apk.sha256
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v6
         with:
-          name: TaskNext-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: TaskNext-v2.0.0-alpha1-verified-apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk.sha256
           if-no-files-found: error
+          compression-level: 0
