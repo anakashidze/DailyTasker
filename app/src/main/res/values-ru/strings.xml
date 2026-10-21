@@ -80,4 +80,5 @@
     <string name="drag_to_reorder">Удерживайте и перетащите для изменения порядка</string>
     <string name="complete">Выполнить</string>
     <string name="delete">Удалить</string>
+    <string name="comment">Комментарий</string>
 </resources>
