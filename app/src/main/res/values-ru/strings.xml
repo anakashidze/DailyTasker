@@ -81,4 +81,5 @@
     <string name="complete">Выполнить</string>
     <string name="delete">Удалить</string>
     <string name="comment">Комментарий</string>
+    <string name="locked_upper">ЗАФИКСИРОВАНО</string>
 </resources>
