@@ -71,4 +71,13 @@
     <string name="add_new_group">Add new group</string>
     <string name="select_time">Select time</string>
     <string name="ok">OK</string>
+    <string name="next_tasks_description">Big tasks follow the schedule on the right. Reorder them and the dates move with the positions.</string>
+    <string name="no_big_tasks">No Big tasks scheduled.</string>
+    <string name="bonus_backlog_description">Small tasks live here. Use the star to bring one into Bonus today.</string>
+    <string name="no_small_tasks">No Small tasks in backlog.</string>
+    <string name="drag_to_next_tasks">Long-press and drag into Next tasks; release to move</string>
+    <string name="drag_to_bonus_backlog">Long-press and drag into Bonus backlog; release to move</string>
+    <string name="drag_to_reorder">Long-press and drag; release to reorder</string>
+    <string name="complete">Complete</string>
+    <string name="delete">Delete</string>
 </resources>
