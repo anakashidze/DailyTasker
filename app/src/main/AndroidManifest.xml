@@ -33,6 +33,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".notifications.DailyPlanningReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".notifications.BootReceiver"
             android:exported="false">
             <intent-filter>
