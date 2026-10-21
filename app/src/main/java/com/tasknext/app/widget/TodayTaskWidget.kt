@@ -11,6 +11,7 @@ import android.widget.RemoteViews
 import com.tasknext.app.MainActivity
 import com.tasknext.app.R
 import com.tasknext.app.data.AppDatabase
+import com.tasknext.app.data.DailyOutcomeStatus
 import com.tasknext.app.data.SettingsStore
 import com.tasknext.app.data.TaskRepository
 import kotlinx.coroutines.CoroutineScope
@@ -67,10 +68,16 @@ class TodayTaskWidget : AppWidgetProvider() {
             // Keep calendar rollover, Overdue state and streak correct even when the
             // widget refreshes before the user opens the app.
             TaskRepository(dao, settings).rolloverDayIfNeeded()
-            val todayTask = dao.getAllOnce().firstOrNull {
+            val allTasks = dao.getAllOnce()
+            val todayTask = allTasks.firstOrNull {
                 !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
             }
+            val overdueCount = allTasks.count {
+                !it.isArchived && it.overdueSinceEpochDay != null
+            }
             val todayEpochDay = LocalDate.now().toEpochDay()
+            val todayOutcome = dao.getDailyOutcome(todayEpochDay)
+            val restToday = todayOutcome?.status == DailyOutcomeStatus.REST
             val dayComplete = settings.dayCompletedEpochDay == todayEpochDay
             val streak = if (settings.streakLastCompletedEpochDay < todayEpochDay - 1L) {
                 0
@@ -105,9 +112,20 @@ class TodayTaskWidget : AppWidgetProvider() {
                         )
                         views.setTextViewText(R.id.widget_title, todayTask.title)
                     }
+                    restToday -> {
+                        views.setTextViewText(R.id.widget_meta, localizedContext.getString(R.string.rest_today))
+                        views.setTextViewText(R.id.widget_title, localizedContext.getString(R.string.streak_protected))
+                    }
                     dayComplete -> {
                         views.setTextViewText(R.id.widget_meta, localizedContext.getString(R.string.widget_day_complete))
                         views.setTextViewText(R.id.widget_title, localizedContext.getString(R.string.widget_all_done))
+                    }
+                    overdueCount > 0 -> {
+                        views.setTextViewText(R.id.widget_meta, localizedContext.getString(R.string.overdue_upper))
+                        views.setTextViewText(
+                            R.id.widget_title,
+                            localizedContext.getString(R.string.widget_overdue_count, overdueCount)
+                        )
                     }
                     else -> {
                         views.setTextViewText(R.id.widget_meta, localizedContext.getString(R.string.today_upper))
