@@ -57,4 +57,11 @@
     <string name="clear_history">Clear history</string>
     <string name="clear_history_question">Clear history?</string>
     <string name="clear_history_description">This removes History records. Your active tasks and streak ledger are not affected.</string>
+    <string name="nothing_set_today">Nothing set for today.\nChoose a Big task from Next tasks.</string>
+    <string name="pull_to_add_task">Pull to add task</string>
+    <string name="release_to_add_task">Release to add task</string>
+    <string name="done">Done</string>
+    <string name="tap_when_done">tap when it&apos;s done</string>
+    <string name="day_complete">Day complete</string>
+    <string name="day_complete_description">Your Big task is done for today.</string>
 </resources>
