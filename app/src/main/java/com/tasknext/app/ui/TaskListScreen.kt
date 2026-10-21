@@ -243,7 +243,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             .filter { it.taskSize == task.taskSize && it.id != task.id }
             .toMutableList()
         val otherSize = localPool.filter { it.taskSize != task.taskSize }
-        val targetIndex = poolInsertionIndexForTop(task.taskSize, task.id, draggedTopPx)
+        val targetIndex = dragPreviewIndex
+            ?: poolInsertionIndexForTop(task.taskSize, task.id, draggedTopPx)
         sameSize.add(targetIndex.coerceIn(0, sameSize.size), task)
 
         val ordered = if (task.taskSize == TaskSize.BIG) {
@@ -443,7 +444,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             if (startTop != null && headerTop != null) {
                                 val draggedTop = startTop + offsetY
                                 if (draggedTop >= headerTop) {
-                                    val insertionIndex = poolInsertionIndexForTop(TaskSize.BIG, null, draggedTop)
+                                    val insertionIndex = dragPreviewIndex
+                                        ?: poolInsertionIndexForTop(TaskSize.BIG, null, draggedTop)
                                     viewModel.moveTodayToBacklogAt(task.id, insertionIndex)
                                 }
                             }
@@ -500,7 +502,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             if (startTop != null && headerTop != null) {
                                 val draggedTop = startTop + offsetY
                                 if (draggedTop >= headerTop) {
-                                    val insertionIndex = poolInsertionIndexForTop(TaskSize.SMALL, null, draggedTop)
+                                    val insertionIndex = dragPreviewIndex
+                                        ?: poolInsertionIndexForTop(TaskSize.SMALL, null, draggedTop)
                                     viewModel.moveBonusToBacklogAt(task.id, insertionIndex)
                                 }
                             }
