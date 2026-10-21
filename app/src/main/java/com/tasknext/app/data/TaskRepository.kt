@@ -70,6 +70,8 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     }
 
     suspend fun deleteTask(id: Long) {
+        val task = dao.getById(id) ?: return
+        if (task.slot == 0 && isTodayLocked()) return
         if (settings.queuedTomorrowTaskId == id) {
             settings.queuedTomorrowTaskId = -1L
         }
