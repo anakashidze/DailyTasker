@@ -27,7 +27,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.tasknext.app.data.Priority
+import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
 import com.tasknext.app.data.TaskGroupDefinition
 import com.tasknext.app.data.TaskGroups
@@ -57,8 +57,10 @@ private val groupIconChoices = listOf(
     "send", "notifications"
 )
 
-private fun priorityLabel(priority: Priority): String =
-    priority.name.lowercase().replaceFirstChar { it.uppercase() }
+private fun taskSizeLabel(taskSize: TaskSize): String = when (taskSize) {
+    TaskSize.BIG -> "Big"
+    TaskSize.SMALL -> "Small"
+}
 
 private fun parseColor(hex: String): Color = try {
     Color(android.graphics.Color.parseColor(hex))
@@ -79,7 +81,7 @@ fun AddEditTaskDialog(
     onSave: (
         title: String,
         group: TaskGroupDefinition,
-        priority: Priority,
+        taskSize: TaskSize,
         comment: String,
         reminderOn: Boolean,
         hour: Int?,
@@ -98,7 +100,7 @@ fun AddEditTaskDialog(
             } ?: TaskGroups.default
         )
     }
-    var priority by remember(existing?.id) { mutableStateOf(existing?.priority ?: Priority.MEDIUM) }
+    var taskSize by remember(existing?.id) { mutableStateOf(existing?.taskSize ?: TaskSize.BIG) }
     var comment by remember(existing?.id) { mutableStateOf(existing?.comment ?: "") }
     var reminderOn by remember(existing?.id) { mutableStateOf(existing?.reminderEnabled ?: true) }
     var useDefaultTime by remember(existing?.id) {
@@ -113,7 +115,7 @@ fun AddEditTaskDialog(
 
     var showTimePicker by remember { mutableStateOf(false) }
     var groupExpanded by remember { mutableStateOf(false) }
-    var priorityExpanded by remember { mutableStateOf(false) }
+    var taskSizeExpanded by remember { mutableStateOf(false) }
     var showNewGroup by remember { mutableStateOf(false) }
     var newGroupName by remember { mutableStateOf("") }
     var newGroupIcon by remember { mutableStateOf("star") }
@@ -184,54 +186,54 @@ fun AddEditTaskDialog(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Priority",
+                            "Task size",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Box(Modifier.fillMaxWidth()) {
                             OutlinedButton(
-                                onClick = { priorityExpanded = true },
+                                onClick = { taskSizeExpanded = true },
                                 modifier = Modifier.fillMaxWidth(),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = priorityPalette(priority).container,
-                                    contentColor = priorityPalette(priority).content
+                                    containerColor = taskSizePalette(taskSize).container,
+                                    contentColor = taskSizePalette(taskSize).content
                                 ),
                                 border = androidx.compose.foundation.BorderStroke(
                                     1.dp,
-                                    priorityPalette(priority).content.copy(alpha = 0.22f)
+                                    taskSizePalette(taskSize).content.copy(alpha = 0.22f)
                                 )
                             ) {
                                 Box(
                                     Modifier
                                         .size(7.dp)
-                                        .background(priorityPalette(priority).content, CircleShape)
+                                        .background(taskSizePalette(taskSize).content, CircleShape)
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    priorityLabel(priority),
-                                    color = priorityPalette(priority).content,
+                                    taskSizeLabel(taskSize),
+                                    color = taskSizePalette(taskSize).content,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1
                                 )
                             }
                             DropdownMenu(
-                                expanded = priorityExpanded,
-                                onDismissRequest = { priorityExpanded = false }
+                                expanded = taskSizeExpanded,
+                                onDismissRequest = { taskSizeExpanded = false }
                             ) {
-                                Priority.entries.forEach { choice ->
+                                TaskSize.entries.forEach { choice ->
                                     DropdownMenuItem(
-                                        text = { Text(priorityLabel(choice)) },
+                                        text = { Text(taskSizeLabel(choice)) },
                                         leadingIcon = {
                                             Box(
                                                 Modifier
                                                     .size(9.dp)
-                                                    .background(priorityPalette(choice).content, CircleShape)
+                                                    .background(taskSizePalette(choice).content, CircleShape)
                                             )
                                         },
                                         onClick = {
-                                            priority = choice
-                                            priorityExpanded = false
+                                            taskSize = choice
+                                            taskSizeExpanded = false
                                         }
                                     )
                                 }
@@ -482,7 +484,7 @@ fun AddEditTaskDialog(
                     onSave(
                         title.trim(),
                         selectedGroup,
-                        priority,
+                        taskSize,
                         comment.trim(),
                         reminderOn,
                         if (reminderOn && !useDefaultTime) hour else null,
