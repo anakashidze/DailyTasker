@@ -337,23 +337,44 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     suspend fun moveBonusToBacklogAt(taskId: Long, insertionIndex: Int) {
         val all = dao.getAllOnce()
         val task = all.firstOrNull { it.id == taskId } ?: return
-        if (task.slot == null || task.slot == 0 || task.isArchived) return
+        if (
+            task.taskSize != TaskSize.SMALL ||
+            task.slot == null ||
+            task.slot == 0 ||
+            task.isArchived
+        ) return
 
-        val pool = all
-            .filter { it.slot == null && !it.isArchived && it.overdueSinceEpochDay == null && it.id != taskId }
+        val bigPool = all
+            .filter {
+                it.taskSize == TaskSize.BIG &&
+                it.slot == null &&
+                !it.isArchived &&
+                it.overdueSinceEpochDay == null
+            }
+            .sortedBy { it.orderIndex }
+        val smallPool = all
+            .filter {
+                it.taskSize == TaskSize.SMALL &&
+                it.slot == null &&
+                !it.isArchived &&
+                it.overdueSinceEpochDay == null &&
+                it.id != taskId
+            }
             .sortedBy { it.orderIndex }
             .toMutableList()
 
-        pool.add(insertionIndex.coerceIn(0, pool.size), task.copy(slot = null, overdueSinceEpochDay = null))
-        dao.updateTasks(
-            pool.mapIndexed { index, poolTask ->
-                poolTask.copy(slot = null, orderIndex = index)
-            }
-        )
+        smallPool.add(insertionIndex.coerceIn(0, smallPool.size), task.copy(slot = null, overdueSinceEpochDay = null))
+        val ordered = bigPool + smallPool
+        dao.updateTasks(ordered.mapIndexed { index, poolTask -> poolTask.copy(slot = null, orderIndex = index) })
     }
 
     suspend fun moveBonusToBacklog(taskId: Long) {
-        val poolSize = dao.getAllOnce().count { it.slot == null && !it.isArchived && it.overdueSinceEpochDay == null }
+        val poolSize = dao.getAllOnce().count {
+            it.taskSize == TaskSize.SMALL &&
+            it.slot == null &&
+            !it.isArchived &&
+            it.overdueSinceEpochDay == null
+        }
         moveBonusToBacklogAt(taskId, poolSize)
     }
 
