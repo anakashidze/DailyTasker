@@ -61,7 +61,7 @@
     <string name="pull_to_add_task">Pull to add task</string>
     <string name="release_to_add_task">Release to add task</string>
     <string name="done">Done</string>
-    <string name="tap_when_done">tap when it&apos;s done</string>
+    <string name="tap_when_done">tap when it\'s done</string>
     <string name="day_complete">Day complete</string>
     <string name="day_complete_description">Your Big task is done for today.</string>
     <string name="new_group">New group</string>
