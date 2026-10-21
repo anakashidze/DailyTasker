@@ -80,4 +80,5 @@
     <string name="drag_to_reorder">დიდხანს დააჭირეთ და გადაალაგეთ</string>
     <string name="complete">შესრულება</string>
     <string name="delete">წაშლა</string>
+    <string name="comment">კომენტარი</string>
 </resources>
