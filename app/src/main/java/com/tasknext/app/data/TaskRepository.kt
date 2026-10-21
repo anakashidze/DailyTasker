@@ -46,7 +46,19 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
 
     suspend fun getTask(id: Long): Task? = dao.getById(id)
     suspend fun getAllTasksOnce(): List<Task> = dao.getAllOnce()
-    suspend fun updateTask(task: Task) = dao.update(task)
+    suspend fun updateTask(task: Task) {
+        val existing = dao.getById(task.id) ?: return
+        if (existing.slot == 0 && isTodayLocked()) return
+
+        val normalized = when {
+            task.taskSize == TaskSize.SMALL && existing.slot == 0 ->
+                task.copy(slot = null, overdueSinceEpochDay = null)
+            task.taskSize == TaskSize.BIG && existing.slot != null && existing.slot != 0 ->
+                task.copy(slot = null, overdueSinceEpochDay = null)
+            else -> task
+        }
+        dao.update(normalized)
+    }
 
     suspend fun reassignRemovedGroup(removedGroupName: String, defaultGroup: TaskGroupDefinition) {
         dao.reassignRemovedGroup(
