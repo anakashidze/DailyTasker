@@ -509,7 +509,6 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     }
                 )
             }
-            }
         }
     }
 
