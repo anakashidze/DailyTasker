@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.widget.RemoteViews
 import com.tasknext.app.MainActivity
 import com.tasknext.app.R
@@ -16,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.util.Locale
 
 /**
  * Small 2x1 launcher widget that mirrors TaskNext's mandatory Today task.
@@ -58,6 +60,10 @@ class TodayTaskWidget : AppWidgetProvider() {
         ) {
             val dao = AppDatabase.getInstance(context).taskDao()
             val settings = SettingsStore(context)
+            val locale = Locale.forLanguageTag(settings.languageCode)
+            val localizedContext = context.createConfigurationContext(
+                Configuration(context.resources.configuration).apply { setLocale(locale) }
+            )
             // Keep calendar rollover, Overdue state and streak correct even when the
             // widget refreshes before the user opens the app.
             TaskRepository(dao, settings).rolloverDayIfNeeded()
@@ -86,20 +92,26 @@ class TodayTaskWidget : AppWidgetProvider() {
                 val views = RemoteViews(context.packageName, R.layout.widget_today_task)
                 views.setTextViewText(
                     R.id.widget_streak,
-                    if (streak == 1) "🔥 1 day" else "🔥 $streak days"
+                    "🔥 " + localizedContext.getString(
+                        if (streak == 1) R.string.day_count else R.string.days_count,
+                        streak
+                    )
                 )
                 when {
                     todayTask != null -> {
-                        views.setTextViewText(R.id.widget_meta, "TODAY • ${todayTask.groupName}")
+                        views.setTextViewText(
+                            R.id.widget_meta,
+                            localizedContext.getString(R.string.widget_today_group, todayTask.groupName)
+                        )
                         views.setTextViewText(R.id.widget_title, todayTask.title)
                     }
                     dayComplete -> {
-                        views.setTextViewText(R.id.widget_meta, "DAY COMPLETE")
-                        views.setTextViewText(R.id.widget_title, "All done for today")
+                        views.setTextViewText(R.id.widget_meta, localizedContext.getString(R.string.widget_day_complete))
+                        views.setTextViewText(R.id.widget_title, localizedContext.getString(R.string.widget_all_done))
                     }
                     else -> {
-                        views.setTextViewText(R.id.widget_meta, "TODAY")
-                        views.setTextViewText(R.id.widget_title, "No task selected")
+                        views.setTextViewText(R.id.widget_meta, localizedContext.getString(R.string.today_upper))
+                        views.setTextViewText(R.id.widget_title, localizedContext.getString(R.string.widget_no_task_selected))
                     }
                 }
                 views.setOnClickPendingIntent(R.id.widget_root, openApp)
