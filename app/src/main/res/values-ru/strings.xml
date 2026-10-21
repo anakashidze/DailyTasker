@@ -82,4 +82,8 @@
     <string name="delete">Удалить</string>
     <string name="comment">Комментарий</string>
     <string name="locked_upper">ЗАФИКСИРОВАНО</string>
+    <string name="widget_today_group">СЕГОДНЯ • %1$s</string>
+    <string name="widget_day_complete">ДЕНЬ ВЫПОЛНЕН</string>
+    <string name="widget_all_done">Главная задача на сегодня выполнена</string>
+    <string name="widget_no_task_selected">Большая задача не выбрана</string>
 </resources>
