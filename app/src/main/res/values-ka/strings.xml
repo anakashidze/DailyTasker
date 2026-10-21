@@ -64,4 +64,11 @@
     <string name="tap_when_done">დააჭირეთ შესრულების შემდეგ</string>
     <string name="day_complete">დღე შესრულებულია</string>
     <string name="day_complete_description">დღევანდელი დიდი დავალება შესრულებულია.</string>
+    <string name="new_group">ახალი ჯგუფი</string>
+    <string name="group_name">ჯგუფის სახელი</string>
+    <string name="icon">ხატულა</string>
+    <string name="color">ფერი</string>
+    <string name="add_new_group">ახალი ჯგუფის დამატება</string>
+    <string name="select_time">დროის არჩევა</string>
+    <string name="ok">კარგი</string>
 </resources>
