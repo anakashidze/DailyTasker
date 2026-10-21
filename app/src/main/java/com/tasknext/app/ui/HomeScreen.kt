@@ -3,6 +3,7 @@ package com.tasknext.app.ui
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -29,6 +30,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -99,7 +101,11 @@ fun HomeScreen(
         HubPage.TASKS -> if (totalX < 0f) HubPage.HOME else null
     }
 
-    fun settleToPage(target: HubPage, initialOffset: Float = dragOffsetX) {
+    fun settleToPage(
+        target: HubPage,
+        initialOffset: Float = dragOffsetX,
+        initialVelocity: Float = 0f
+    ) {
         if (settling || target == currentPage) return
         settling = true
         scope.launch {
@@ -107,7 +113,11 @@ fun HomeScreen(
             animate(
                 initialValue = initialOffset,
                 targetValue = targetOffset,
-                animationSpec = tween(180)
+                initialVelocity = initialVelocity,
+                animationSpec = spring(
+                    dampingRatio = 0.92f,
+                    stiffness = 520f
+                )
             ) { value, _ -> dragOffsetX = value }
             currentPage = target
             dragOffsetX = 0f
@@ -115,14 +125,21 @@ fun HomeScreen(
         }
     }
 
-    fun cancelHorizontal(initialOffset: Float = dragOffsetX) {
+    fun cancelHorizontal(
+        initialOffset: Float = dragOffsetX,
+        initialVelocity: Float = 0f
+    ) {
         if (settling) return
         settling = true
         scope.launch {
             animate(
                 initialValue = initialOffset,
                 targetValue = 0f,
-                animationSpec = tween(160)
+                initialVelocity = initialVelocity,
+                animationSpec = spring(
+                    dampingRatio = 0.94f,
+                    stiffness = 560f
+                )
             ) { value, _ -> dragOffsetX = value }
             dragOffsetX = 0f
             settling = false
@@ -154,6 +171,7 @@ fun HomeScreen(
                             var gesture: HubGesture? = null
                             var horizontalTarget: HubPage? = null
                             var pullHapticSent = false
+                            val velocityTracker = VelocityTracker()
                             dragOffsetX = 0f
                             pullOffset = 0f
 
@@ -166,6 +184,7 @@ fun HomeScreen(
                                 // gesture only starts when child content has not consumed it.
                                 if (gesture == null && change.isConsumed) continue
 
+                                velocityTracker.addPosition(change.uptimeMillis, change.position)
                                 val delta = change.position - change.previousPosition
                                 totalX += delta.x
                                 totalY += delta.y
@@ -219,10 +238,22 @@ fun HomeScreen(
                                 HubGesture.LEFT, HubGesture.RIGHT -> {
                                     val target = horizontalTarget
                                     if (target != null) {
-                                        val commit = abs(dragOffsetX) >= widthPx / 2f ||
+                                        val velocityX = runCatching {
+                                            velocityTracker.calculateVelocity().x
+                                        }.getOrDefault(0f)
+                                        val flingThreshold = 720f * density.density
+                                        val velocityMatchesTarget =
+                                            (target.index > currentPage.index && velocityX < -flingThreshold) ||
+                                            (target.index < currentPage.index && velocityX > flingThreshold)
+                                        val commit =
+                                            abs(dragOffsetX) >= widthPx * 0.24f ||
+                                            velocityMatchesTarget ||
                                             abs(dragOffsetX) >= swipeThresholdPx
-                                        if (commit) settleToPage(target, dragOffsetX)
-                                        else cancelHorizontal(dragOffsetX)
+                                        if (commit) {
+                                            settleToPage(target, dragOffsetX, velocityX)
+                                        } else {
+                                            cancelHorizontal(dragOffsetX, velocityX)
+                                        }
                                     }
                                 }
                                 HubGesture.DOWN -> {
