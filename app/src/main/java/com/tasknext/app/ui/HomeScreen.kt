@@ -70,6 +70,8 @@ fun HomeScreen(
     val bonusTasks by viewModel.bonusTasks.collectAsState()
     val dayComplete by viewModel.dayComplete.collectAsState()
     val streakCount by viewModel.streakCount.collectAsState()
+    val restCredits by viewModel.restCredits.collectAsState()
+    val restToday by viewModel.restToday.collectAsState()
     val showTomorrowPicker by viewModel.showTomorrowPicker.collectAsState()
     val pool by viewModel.pool.collectAsState()
     val taskGroups by viewModel.taskGroups.collectAsState()
@@ -292,9 +294,12 @@ fun HomeScreen(
                         bonusTasks = bonusTasks,
                         dayComplete = dayComplete,
                         streakCount = streakCount,
+                        restCredits = restCredits,
+                        restToday = restToday,
                         todayLocked = todayLocked,
                         onCompleteMandatory = { viewModel.completeMandatory(it) },
                         onCompleteBonus = { viewModel.completeBonus(it) },
+                        onUseRestCredit = { viewModel.useRestCreditToday() },
                         onOpenTasks = { settleToPage(HubPage.TASKS, 0f) },
                         onOpenHistory = { settleToPage(HubPage.HISTORY, 0f) },
                         onOpenSettings = onOpenSettings
@@ -355,9 +360,12 @@ private fun HomePageContent(
     bonusTasks: List<Task>,
     dayComplete: Boolean,
     streakCount: Int,
+    restCredits: Int,
+    restToday: Boolean,
     todayLocked: Boolean,
     onCompleteMandatory: (Long) -> Unit,
     onCompleteBonus: (Long) -> Unit,
+    onUseRestCredit: () -> Unit,
     onOpenTasks: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit
@@ -420,6 +428,17 @@ private fun HomePageContent(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+                    if (restCredits > 0) {
+                        Text(
+                            stringResource(
+                                if (restCredits == 1) R.string.rest_credit_count
+                                else R.string.rest_credits_count,
+                                restCredits
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     IconButton(
                         onClick = onOpenSettings,
                         modifier = Modifier.size(32.dp)
@@ -436,20 +455,31 @@ private fun HomePageContent(
 
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 when {
+                    restToday -> RestDayHero()
                     dayComplete -> DayCompleteHero(accent)
                     mandatory != null -> OneThingHero(
                         task = mandatory,
                         accent = accent,
                         onDone = { onCompleteMandatory(mandatory.id) }
                     )
-                    else -> Text(
-                        stringResource(
-                            if (todayLocked) R.string.today_selection_closed else R.string.nothing_set_today
-                        ),
-                        style = MaterialTheme.typography.headlineSmall,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    else -> Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            stringResource(
+                                if (todayLocked) R.string.today_selection_closed else R.string.nothing_set_today
+                            ),
+                            style = MaterialTheme.typography.headlineSmall,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (todayLocked && restCredits > 0) {
+                            FilledTonalButton(onClick = onUseRestCredit) {
+                                Text(stringResource(R.string.use_rest_credit))
+                            }
+                        }
+                    }
                 }
             }
 
@@ -567,6 +597,26 @@ private fun OneThingHero(task: Task, accent: Color, onDone: () -> Unit) {
         }
         Spacer(Modifier.height(12.dp))
         Text(stringResource(R.string.tap_when_done), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun RestDayHero() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            stringResource(R.string.rest_today),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            stringResource(R.string.streak_protected),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
