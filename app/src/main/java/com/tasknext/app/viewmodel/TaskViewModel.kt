@@ -112,6 +112,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTask(task: Task) = viewModelScope.launch {
         repo.updateTask(task)
         repo.getTask(task.id)?.let { syncTaskReminder(it) }
+        syncDailyReminderAlarms()
         refreshTodayWidget()
     }
 
@@ -203,6 +204,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repo.moveTodayToBacklogAt(taskId, insertionIndex)
         _dayComplete.value = false
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        syncDailyReminderAlarms()
         refreshTodayWidget()
     }
 
@@ -223,6 +225,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repo.getTask(taskId)?.let { syncTaskReminder(it) }
         _dayComplete.value = false
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        syncDailyReminderAlarms()
         refreshTodayWidget()
     }
 
@@ -292,6 +295,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         previousToday?.let { NotificationScheduler.cancel(getApplication(), it.id) }
         repo.getTask(taskId)?.let { syncTaskReminder(it) }
         _dayComplete.value = false
+        syncDailyReminderAlarms()
         refreshTodayWidget()
     }
 
@@ -318,8 +322,25 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSnoozeMinutes(minutes: Int) { settings.snoozeMinutes = minutes.coerceIn(1, 24 * 60) }
 
+    fun rescheduleDailyReminders() = viewModelScope.launch {
+        syncDailyReminderAlarms()
+    }
+
+    private suspend fun syncDailyReminderAlarms() {
+        val tasks = repo.getAllTasksOnce()
+        val todayTask = tasks.firstOrNull {
+            !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
+        }
+        NotificationScheduler.syncDailyReminders(getApplication(), settings, todayTask)
+    }
+
     private suspend fun syncReminderAlarms() {
-        repo.getAllTasksOnce().forEach { syncTaskReminder(it) }
+        val tasks = repo.getAllTasksOnce()
+        tasks.forEach { syncTaskReminder(it) }
+        val todayTask = tasks.firstOrNull {
+            !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
+        }
+        NotificationScheduler.syncDailyReminders(getApplication(), settings, todayTask)
     }
 
     private fun syncTaskReminder(task: Task) {
