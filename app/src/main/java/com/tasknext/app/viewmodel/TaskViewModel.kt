@@ -62,9 +62,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun refreshTodayWidget() = TodayTaskWidget.requestUpdate(getApplication())
 
-    init {
-        onAppResumed()
-    }
+    init { onAppResumed() }
 
     fun onAppResumed() = viewModelScope.launch {
         repo.rolloverDayIfNeeded()
@@ -120,26 +118,17 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun removeCustomGroup(group: TaskGroupDefinition) = viewModelScope.launch {
-        // Built-in groups are intentionally immutable and can never be removed.
         if (group.builtIn || TaskGroups.builtIns.any { it.name.equals(group.name, ignoreCase = true) }) return@launch
-
         val defaultGroup = TaskGroups.default
         repo.reassignRemovedGroup(group.name, defaultGroup)
-
-        val custom = settings.customGroups
-            .filterNot { it.name.equals(group.name, ignoreCase = true) }
+        val custom = settings.customGroups.filterNot { it.name.equals(group.name, ignoreCase = true) }
         settings.customGroups = custom
         _taskGroups.value = TaskGroups.builtIns + custom
         refreshTodayWidget()
     }
 
-    fun deleteHistoryRecord(id: Long) = viewModelScope.launch {
-        repo.deleteHistoryRecord(id)
-    }
-
-    fun clearHistory() = viewModelScope.launch {
-        repo.clearHistory()
-    }
+    fun deleteHistoryRecord(id: Long) = viewModelScope.launch { repo.deleteHistoryRecord(id) }
+    fun clearHistory() = viewModelScope.launch { repo.clearHistory() }
 
     fun deleteTask(task: Task) = viewModelScope.launch {
         NotificationScheduler.cancel(getApplication(), task.id)
@@ -218,10 +207,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         refreshTodayWidget()
     }
 
-    fun replaceTodayWith(
-        taskId: Long,
-        backlogOrderAfterSwap: List<Long>? = null
-    ) = viewModelScope.launch {
+    fun replaceTodayWith(taskId: Long, backlogOrderAfterSwap: List<Long>? = null) = viewModelScope.launch {
         val previousToday = mandatoryTask.value
         repo.replaceMandatoryWith(taskId, backlogOrderAfterSwap)
         previousToday?.let { NotificationScheduler.cancel(getApplication(), it.id) }
@@ -255,7 +241,6 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repo.completeMandatory(taskId)
         _dayComplete.value = true
         _streakCount.value = repo.currentStreakCount()
-
         if (settings.autoFillNextTask) {
             repo.suggestNext()?.let { repo.setTomorrowTask(it.id) }
             _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
@@ -272,9 +257,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         refreshTodayWidget()
     }
 
-    fun dismissTomorrowPicker() {
-        _showTomorrowPicker.value = false
-    }
+    fun dismissTomorrowPicker() { _showTomorrowPicker.value = false }
 
     fun setTomorrowTask(taskId: Long) = viewModelScope.launch {
         repo.setTomorrowTask(taskId)
@@ -297,9 +280,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { syncReminderAlarms() }
     }
 
-    fun setSnoozeMinutes(minutes: Int) {
-        settings.snoozeMinutes = minutes.coerceIn(1, 24 * 60)
-    }
+    fun setSnoozeMinutes(minutes: Int) { settings.snoozeMinutes = minutes.coerceIn(1, 24 * 60) }
 
     private suspend fun syncReminderAlarms() {
         repo.getAllTasksOnce().forEach { syncTaskReminder(it) }
