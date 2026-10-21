@@ -87,4 +87,18 @@
     <string name="widget_all_done">Главная задача на сегодня выполнена</string>
     <string name="widget_no_task_selected">Большая задача не выбрана</string>
     <string name="today_selection_closed">Задача на сегодня не была выбрана до времени фиксации. Окно выбора закрыто.</string>
+    <string name="rest_credit_count">%1$d кредит отдыха</string>
+    <string name="rest_credits_count">%1$d кредита отдыха</string>
+    <string name="use_rest_credit">Использовать кредит отдыха</string>
+    <string name="rest_today">СЕГОДНЯ ОТДЫХ</string>
+    <string name="streak_protected">Серия защищена. День отдыха не увеличивает её.</string>
+    <string name="history_completed">Выполнено</string>
+    <string name="history_deleted">Удалено</string>
+    <string name="history_recovered">Восстановлено</string>
+    <string name="recover_task">Восстановить задачу</string>
+    <string name="effective_date">Зачтённая дата</string>
+    <string name="complete_overdue_title">Завершить просроченную задачу</string>
+    <string name="complete_overdue_question">Эта задача со вчерашнего дня. Когда вы её выполнили?</string>
+    <string name="completed_yesterday">Выполнено вчера</string>
+    <string name="complete_today">Выполнить сегодня</string>
 </resources>
