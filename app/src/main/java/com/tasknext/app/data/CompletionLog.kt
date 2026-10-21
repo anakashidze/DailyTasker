@@ -16,6 +16,7 @@ data class CompletionLog(
     @ColumnInfo(defaultValue = "'Task'") val groupNameSnapshot: String = "Task",
     @ColumnInfo(defaultValue = "'task'") val groupIconSnapshot: String = "task",
     @ColumnInfo(defaultValue = "''") val commentSnapshot: String = "",
+    @ColumnInfo(defaultValue = "'BIG'") val taskSizeSnapshot: TaskSize = TaskSize.BIG,
     @ColumnInfo(defaultValue = "'COMPLETED'") val eventType: HistoryEventType = HistoryEventType.COMPLETED,
     val effectiveEpochDay: Long? = null,
     val recoveredFromLogId: Long? = null,
