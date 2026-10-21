@@ -107,7 +107,7 @@ fun HomeScreen(
             animate(
                 initialValue = initialOffset,
                 targetValue = targetOffset,
-                animationSpec = tween(150)
+                animationSpec = tween(180)
             ) { value, _ -> dragOffsetX = value }
             currentPage = target
             dragOffsetX = 0f
@@ -122,7 +122,7 @@ fun HomeScreen(
             animate(
                 initialValue = initialOffset,
                 targetValue = 0f,
-                animationSpec = tween(135)
+                animationSpec = tween(160)
             ) { value, _ -> dragOffsetX = value }
             dragOffsetX = 0f
             settling = false
@@ -238,11 +238,14 @@ fun HomeScreen(
             )
     ) {
         HubPage.entries.forEach { page ->
-            val translation = (page.index - currentPage.index) * widthPx + dragOffsetX
+            // Keep the high-frequency drag state out of composition. Reading
+            // dragOffsetX inside graphicsLayer invalidates only the render layer
+            // instead of recomposing Tasks/Home/History on every pointer move.
+            val pageBaseOffset = (page.index - currentPage.index) * widthPx
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { translationX = translation }
+                    .graphicsLayer { translationX = pageBaseOffset + dragOffsetX }
             ) {
                 when (page) {
                     HubPage.TASKS -> TaskListScreen(
