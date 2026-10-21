@@ -217,6 +217,7 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             groupNameSnapshot = task.groupName,
             groupIconSnapshot = task.groupIcon,
             commentSnapshot = task.comment,
+            taskSizeSnapshot = task.taskSize,
             eventType = HistoryEventType.COMPLETED,
             effectiveEpochDay = todayEpochDay(),
             completedAtEpochMillis = System.currentTimeMillis()
