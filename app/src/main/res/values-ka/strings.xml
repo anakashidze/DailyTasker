@@ -81,4 +81,5 @@
     <string name="complete">შესრულება</string>
     <string name="delete">წაშლა</string>
     <string name="comment">კომენტარი</string>
+    <string name="locked_upper">ჩაკეტილია</string>
 </resources>
