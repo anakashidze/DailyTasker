@@ -107,4 +107,5 @@
     <string name="notification_streak_title">Your streak is at risk</string>
     <string name="notification_streak_body">Your %1$d-day streak is still open. Complete Today or use a Rest Credit if available.</string>
     <string name="notification_today_open_body">Today is still open. Complete your Big task or use a Rest Credit if available.</string>
+    <string name="widget_overdue_count">%1$d overdue task(s) need attention</string>
 </resources>
