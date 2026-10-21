@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Settings
@@ -31,12 +32,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tasknext.app.R
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
 import kotlinx.coroutines.launch
@@ -257,6 +260,7 @@ fun HomeScreen(
                         onCompleteMandatory = { viewModel.completeMandatory(it) },
                         onCompleteBonus = { viewModel.completeBonus(it) },
                         onOpenTasks = { settleToPage(HubPage.TASKS, 0f) },
+                        onOpenHistory = { settleToPage(HubPage.HISTORY, 0f) },
                         onOpenSettings = onOpenSettings
                     )
                 }
@@ -318,6 +322,7 @@ private fun HomePageContent(
     onCompleteMandatory: (Long) -> Unit,
     onCompleteBonus: (Long) -> Unit,
     onOpenTasks: () -> Unit,
+    onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val accent = remember(mandatory?.colorHex) {
@@ -355,7 +360,7 @@ private fun HomePageContent(
                 )
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        "Streak",
+                        stringResource(R.string.streak),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -370,9 +375,23 @@ private fun HomePageContent(
                             modifier = Modifier.size(17.dp)
                         )
                         Text(
-                            if (streakCount == 1) "1 day" else "$streakCount days",
+                            stringResource(
+                                if (streakCount == 1) R.string.day_count else R.string.days_count,
+                                streakCount
+                            ),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    IconButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.settings_title),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
@@ -387,7 +406,7 @@ private fun HomePageContent(
                         onDone = { onCompleteMandatory(mandatory.id) }
                     )
                     else -> Text(
-                        "Nothing set for today.\nAdd one thing.",
+                        stringResource(R.string.nothing_set_today),
                         style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -397,7 +416,7 @@ private fun HomePageContent(
 
             if (bonusTasks.isNotEmpty()) {
                 Text(
-                    "Also today",
+                    stringResource(R.string.bonus_today),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -420,14 +439,14 @@ private fun HomePageContent(
                 IconButton(onClick = onOpenTasks) {
                     Icon(
                         Icons.Default.List,
-                        contentDescription = "Task list",
+                        contentDescription = stringResource(R.string.tasks),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onOpenSettings) {
+                IconButton(onClick = onOpenHistory) {
                     Icon(
-                        Icons.Default.Settings,
-                        contentDescription = "Settings",
+                        Icons.Default.History,
+                        contentDescription = stringResource(R.string.history),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -465,7 +484,7 @@ private fun PullToAddIndicator(progress: Float, modifier: Modifier = Modifier) {
                 )
             }
             Text(
-                text = if (armed) "Release to add task" else "Pull to add task",
+                text = stringResource(if (armed) R.string.release_to_add_task else R.string.pull_to_add_task),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = if (armed) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (armed) MaterialTheme.colorScheme.primary
@@ -505,10 +524,10 @@ private fun OneThingHero(task: Task, accent: Color, onDone: () -> Unit) {
                 .clickable(onClick = onDone),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Check, contentDescription = "Done", tint = Color.White, modifier = Modifier.size(44.dp))
+            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.done), tint = Color.White, modifier = Modifier.size(44.dp))
         }
         Spacer(Modifier.height(12.dp))
-        Text("tap when it's done", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.tap_when_done), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -523,13 +542,13 @@ private fun DayCompleteHero(accent: Color) {
         }
         Spacer(Modifier.height(20.dp))
         Text(
-            "Day complete",
+            stringResource(R.string.day_complete),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Your one thing is done for today.",
+            stringResource(R.string.day_complete_description),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
