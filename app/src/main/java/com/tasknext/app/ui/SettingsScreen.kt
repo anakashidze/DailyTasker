@@ -143,6 +143,7 @@ fun SettingsScreen(
                     onToggle = {
                         planEnabled = it
                         settings.planTomorrowReminderEnabled = it
+                        viewModel.rescheduleDailyReminders()
                     },
                     onTimeClick = { showPlanTimePicker = true }
                 )
@@ -155,6 +156,7 @@ fun SettingsScreen(
                     onToggle = {
                         streakReminderEnabled = it
                         settings.streakRiskReminderEnabled = it
+                        viewModel.rescheduleDailyReminders()
                     },
                     onTimeClick = { showStreakTimePicker = true }
                 )
@@ -280,6 +282,7 @@ fun SettingsScreen(
                 planMinute = minute
                 settings.planTomorrowReminderHour = hour
                 settings.planTomorrowReminderMinute = minute
+                viewModel.rescheduleDailyReminders()
                 showPlanTimePicker = false
             }
         )
@@ -295,6 +298,7 @@ fun SettingsScreen(
                 streakMinute = minute
                 settings.streakRiskReminderHour = hour
                 settings.streakRiskReminderMinute = minute
+                viewModel.rescheduleDailyReminders()
                 showStreakTimePicker = false
             }
         )
