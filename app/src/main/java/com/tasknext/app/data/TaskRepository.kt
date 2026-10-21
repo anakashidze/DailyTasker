@@ -1,8 +1,10 @@
 package com.tasknext.app.data
 
 import kotlinx.coroutines.flow.Flow
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.temporal.TemporalAdjusters
 
 class TaskRepository(private val dao: TaskDao, private val settings: SettingsStore) {
 
@@ -17,6 +19,21 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     suspend fun clearHistory() = dao.clearHistory()
 
     private fun todayEpochDay(): Long = LocalDate.now().toEpochDay()
+
+    private fun currentWeekBounds(date: LocalDate = LocalDate.now()): Pair<Long, Long> {
+        val monday = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        return monday.toEpochDay() to monday.plusDays(6).toEpochDay()
+    }
+
+    suspend fun availableRestCredits(): Int {
+        val (start, end) = currentWeekBounds()
+        val smallCompleted = dao.countSmallTaskCompletions(start, end)
+        val restUsed = dao.countRestDays(start, end)
+        return (smallCompleted / 5 - restUsed).coerceAtLeast(0)
+    }
+
+    suspend fun isRestToday(): Boolean =
+        dao.getDailyOutcome(todayEpochDay())?.status == DailyOutcomeStatus.REST
 
     fun isTodayLocked(now: LocalTime = LocalTime.now()): Boolean {
         val lock = LocalTime.of(settings.todayLockHour, settings.todayLockMinute)
@@ -75,14 +92,76 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         if (settings.queuedTomorrowTaskId == id) {
             settings.queuedTomorrowTaskId = -1L
         }
+        dao.insertLog(
+            CompletionLog(
+                taskId = task.id,
+                titleSnapshot = task.title,
+                colorHexSnapshot = task.colorHex,
+                prioritySnapshot = task.priority.name,
+                groupNameSnapshot = task.groupName,
+                groupIconSnapshot = task.groupIcon,
+                commentSnapshot = task.comment,
+                taskSizeSnapshot = task.taskSize,
+                eventType = HistoryEventType.DELETED,
+                effectiveEpochDay = todayEpochDay(),
+                completedAtEpochMillis = System.currentTimeMillis()
+            )
+        )
         dao.delete(id)
     }
 
     suspend fun restoreDeletedTask(task: Task, previousQueuedTomorrowTaskId: Long) {
+        // 15-second Undo is a reversal of the deletion, not a Recovery event.
+        dao.deleteLatestLogForTask(task.id)
         dao.insert(task)
         if (previousQueuedTomorrowTaskId == task.id) {
             settings.queuedTomorrowTaskId = task.id
         }
+    }
+
+    suspend fun recoverHistoryRecord(logId: Long): Long? {
+        val source = dao.getHistoryById(logId) ?: return null
+        if (source.eventType == HistoryEventType.RECOVERED) return null
+        if (dao.recoveryCountFor(logId) > 0) return null
+
+        val maxOrder = dao.getAllOnce().maxOfOrNull { it.orderIndex } ?: -1
+        val newId = dao.insert(
+            Task(
+                title = source.titleSnapshot,
+                colorHex = source.colorHexSnapshot,
+                groupName = source.groupNameSnapshot,
+                groupIcon = source.groupIconSnapshot,
+                priority = runCatching { Priority.valueOf(source.prioritySnapshot) }
+                    .getOrDefault(Priority.MEDIUM),
+                taskSize = source.taskSizeSnapshot,
+                comment = source.commentSnapshot,
+                reminderEnabled = false,
+                reminderHour = null,
+                reminderMinute = null,
+                orderIndex = maxOrder + 1,
+                slot = null,
+                overdueSinceEpochDay = null,
+                isArchived = false
+            )
+        )
+
+        dao.insertLog(
+            CompletionLog(
+                taskId = newId,
+                titleSnapshot = source.titleSnapshot,
+                colorHexSnapshot = source.colorHexSnapshot,
+                prioritySnapshot = source.prioritySnapshot,
+                groupNameSnapshot = source.groupNameSnapshot,
+                groupIconSnapshot = source.groupIconSnapshot,
+                commentSnapshot = source.commentSnapshot,
+                taskSizeSnapshot = source.taskSizeSnapshot,
+                eventType = HistoryEventType.RECOVERED,
+                effectiveEpochDay = todayEpochDay(),
+                recoveredFromLogId = source.id,
+                completedAtEpochMillis = System.currentTimeMillis()
+            )
+        )
+        return newId
     }
 
     suspend fun undoCompletion(
@@ -164,6 +243,33 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         settings.lastActiveEpochDay = today
     }
 
+    private suspend fun recalculateStreakCacheFromLedger() {
+        val outcomes = dao.getDailyOutcomesOnce().associateBy { it.epochDay }
+        var day = todayEpochDay()
+        if (outcomes[day] == null) day -= 1L
+
+        var completedCount = 0
+        var latestCompletedDay = -1L
+        while (true) {
+            when (val outcome = outcomes[day]) {
+                null -> break
+                else -> when (outcome.status) {
+                    DailyOutcomeStatus.COMPLETED -> {
+                        if (latestCompletedDay == -1L) latestCompletedDay = day
+                        completedCount++
+                    }
+                    DailyOutcomeStatus.REST -> Unit
+                    DailyOutcomeStatus.MISSED -> break
+                }
+            }
+            if (outcomes[day]?.status == DailyOutcomeStatus.MISSED) break
+            day -= 1L
+        }
+
+        settings.streakCount = completedCount
+        settings.streakLastCompletedEpochDay = latestCompletedDay
+    }
+
     private suspend fun recordTodayStreakCompletion(taskId: Long) {
         val today = todayEpochDay()
         dao.upsertDailyOutcome(
@@ -173,12 +279,27 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
                 sourceTaskId = taskId
             )
         )
-        when (settings.streakLastCompletedEpochDay) {
-            today -> Unit
-            today - 1L -> settings.streakCount = settings.streakCount + 1
-            else -> settings.streakCount = 1
+        recalculateStreakCacheFromLedger()
+    }
+
+    suspend fun useRestCreditToday(): Boolean {
+        val today = todayEpochDay()
+        if (!isTodayLocked()) return false
+        if (settings.dayCompletedEpochDay == today) return false
+        val hasToday = dao.getAllOnce().any {
+            !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
         }
-        settings.streakLastCompletedEpochDay = today
+        if (hasToday || availableRestCredits() <= 0) return false
+
+        dao.upsertDailyOutcome(
+            DailyOutcome(
+                epochDay = today,
+                status = DailyOutcomeStatus.REST
+            )
+        )
+        settings.dayCompletedEpochDay = today
+        recalculateStreakCacheFromLedger()
+        return true
     }
 
     fun currentStreakCount(): Int {
@@ -208,7 +329,42 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         logAndArchiveCompletion(task)
     }
 
-    private suspend fun logAndArchiveCompletion(task: Task) {
+    suspend fun completeOverdue(taskId: Long, completedYesterday: Boolean): Boolean {
+        val task = dao.getById(taskId) ?: return false
+        if (task.isArchived || task.overdueSinceEpochDay == null) return false
+
+        val yesterday = todayEpochDay() - 1L
+        val effectiveDay = if (
+            completedYesterday && task.overdueSinceEpochDay == yesterday
+        ) yesterday else todayEpochDay()
+
+        logAndArchiveCompletion(task, effectiveDay)
+
+        if (completedYesterday && effectiveDay == yesterday) {
+            dao.upsertDailyOutcome(
+                DailyOutcome(
+                    epochDay = yesterday,
+                    status = DailyOutcomeStatus.COMPLETED,
+                    sourceTaskId = task.id
+                )
+            )
+            recalculateStreakCacheFromLedger()
+        }
+        return true
+    }
+
+    private suspend fun logAndArchiveCompletion(
+        task: Task,
+        effectiveEpochDay: Long = todayEpochDay()
+    ) {
+        if (task.taskSize == TaskSize.SMALL) {
+            dao.insertSmallTaskCompletion(
+                SmallTaskCompletion(
+                    taskId = task.id,
+                    epochDay = effectiveEpochDay
+                )
+            )
+        }
         val log = CompletionLog(
             taskId = task.id,
             titleSnapshot = task.title,
@@ -219,7 +375,7 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             commentSnapshot = task.comment,
             taskSizeSnapshot = task.taskSize,
             eventType = HistoryEventType.COMPLETED,
-            effectiveEpochDay = todayEpochDay(),
+            effectiveEpochDay = effectiveEpochDay,
             completedAtEpochMillis = System.currentTimeMillis()
         )
         dao.archiveAsCompleted(task, log)
