@@ -50,6 +50,9 @@ import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -130,10 +133,10 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     }
 
     val displayPool = localPool
+    val bigPool = displayPool.filter { it.taskSize == TaskSize.BIG }
+    val smallPool = displayPool.filter { it.taskSize == TaskSize.SMALL }
     val displayedMandatory = pendingTodayTask ?: mandatory
-    val tomorrowTask = remember(displayPool, queuedTomorrowId) {
-        displayPool.firstOrNull { it.id == queuedTomorrowId } ?: displayPool.firstOrNull()
-    }
+    val todayLocked = viewModel.isTodayLocked()
 
     SideEffect {
         val activeIds = buildSet {
@@ -145,8 +148,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         taskCardBounds.keys.retainAll(activeIds)
     }
 
-    fun backlogInsertionIndexForTop(draggedTaskId: Long?, draggedTopPx: Float): Int {
-        val candidates = localPool.filter { it.id != draggedTaskId }
+    fun poolInsertionIndexForTop(taskSize: TaskSize, draggedTaskId: Long?, draggedTopPx: Float): Int {
+        val candidates = localPool.filter { it.taskSize == taskSize && it.id != draggedTaskId }
         var index = 0
         for (candidate in candidates) {
             val top = taskCardBounds[candidate.id]?.top ?: continue
@@ -155,11 +158,20 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         return index.coerceIn(0, candidates.size)
     }
 
-    fun reorderBacklogOnRelease(task: Task, draggedTopPx: Float) {
-        val others = localPool.filter { it.id != task.id }.toMutableList()
-        val targetIndex = backlogInsertionIndexForTop(task.id, draggedTopPx)
-        others.add(targetIndex.coerceIn(0, others.size), task)
-        val reordered = others.mapIndexed { index, item -> item.copy(orderIndex = index) }
+    fun reorderPoolOnRelease(task: Task, draggedTopPx: Float) {
+        val sameSize = localPool
+            .filter { it.taskSize == task.taskSize && it.id != task.id }
+            .toMutableList()
+        val otherSize = localPool.filter { it.taskSize != task.taskSize }
+        val targetIndex = poolInsertionIndexForTop(task.taskSize, task.id, draggedTopPx)
+        sameSize.add(targetIndex.coerceIn(0, sameSize.size), task)
+
+        val ordered = if (task.taskSize == TaskSize.BIG) {
+            sameSize + otherSize
+        } else {
+            otherSize + sameSize
+        }
+        val reordered = ordered.mapIndexed { index, item -> item.copy(orderIndex = index) }
         val finalOrder = reordered.map { it.id }
         if (finalOrder != localPool.map { it.id }) {
             localPool = reordered
@@ -306,21 +318,19 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         onEdit = { editing = task },
                         onDelete = { deleteWithUndo(task) },
                         onComplete = { completeWithUndo(task) },
-                        onMakeBonus = if (bonusTasks.size < 2) {
-                            { viewModel.moveTodayToBonus(task.id) }
-                        } else null,
-                        dragHint = "Long-press and drag into Backlog; release to move",
-                        onDragRelease = { offsetY ->
+                        onMakeBonus = null,
+                        dragHint = if (!todayLocked) "Long-press and drag into Next tasks; release to move" else "Today is locked",
+                        onDragRelease = if (!todayLocked) { offsetY ->
                             val startTop = taskCardBounds[task.id]?.top ?: todayCardTopPx
                             val headerTop = backlogHeaderTopPx
                             if (startTop != null && headerTop != null) {
                                 val draggedTop = startTop + offsetY
                                 if (draggedTop >= headerTop) {
-                                    val insertionIndex = backlogInsertionIndexForTop(null, draggedTop)
+                                    val insertionIndex = poolInsertionIndexForTop(TaskSize.BIG, null, draggedTop)
                                     viewModel.moveTodayToBacklogAt(task.id, insertionIndex)
                                 }
                             }
-                        },
+                        } else null,
                         onDraggingStateChanged = { isDragging ->
                             draggingTaskId = if (isDragging) task.id else null
                         }
@@ -348,7 +358,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             if (startTop != null && headerTop != null) {
                                 val draggedTop = startTop + offsetY
                                 if (draggedTop >= headerTop) {
-                                    val insertionIndex = backlogInsertionIndexForTop(null, draggedTop)
+                                    val insertionIndex = poolInsertionIndexForTop(TaskSize.SMALL, null, draggedTop)
                                     viewModel.moveBonusToBacklogAt(task.id, insertionIndex)
                                 }
                             }
@@ -367,28 +377,26 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         backlogHeaderTopPx = coordinates.positionInRoot().y
                     }
                 ) {
-                    SectionTitle("Backlog")
+                    SectionTitle("Next tasks")
                     Text(
-                        "Top item is next. Long-press a task to drag; release to drop.",
+                        "Big tasks follow the schedule shown on the right. Reorder them and the dates move with the positions.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            if (displayPool.isEmpty()) {
+            if (bigPool.isEmpty()) {
                 item {
                     Text(
-                        "No backlog tasks.",
+                        "No Big tasks scheduled.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        modifier = Modifier.padding(vertical = 10.dp)
                     )
                 }
             }
 
-            itemsIndexed(displayPool, key = { _, task -> "pool-${task.id}" }) { index, task ->
-                val isTomorrow = task.id == tomorrowTask?.id
-                val canMakeBonus = bonusTasks.size < 2 && task.id != queuedTomorrowId
+            itemsIndexed(bigPool, key = { _, task -> "big-${task.id}" }) { index, task ->
                 val baseItemModifier = if (draggingTaskId == task.id) {
                     Modifier.zIndex(10f)
                 } else {
@@ -404,45 +412,29 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 SwipeableTaskRow(
                     modifier = itemModifier,
                     task = task,
-                    tag = if (isTomorrow) {
-                        if (queuedTomorrowId != -1L) "TOMORROW" else "NEXT"
-                    } else null,
+                    tag = scheduledQueueTag(index),
                     onEdit = { editing = task },
                     onDelete = { deleteWithUndo(task) },
                     onComplete = { completeWithUndo(task) },
-                    onMakeBonus = if (canMakeBonus) {
-                        { viewModel.activateBonusFromPool(task.id) }
+                    onMakeToday = if (!todayLocked) {
+                        { viewModel.chooseToday(task.id) }
                     } else null,
-                    dragHint = "Long-press and drag; release to drop",
+                    onMakeBonus = null,
+                    dragHint = "Long-press and drag; release to reorder",
                     onDragRelease = { offsetY ->
                         val startTop = taskCardBounds[task.id]?.top
                         if (startTop != null) {
                             val draggedTop = startTop + offsetY
                             val todayTop = todayCardTopPx
-                            if (displayedMandatory != null && todayTop != null && draggedTop <= todayTop) {
-                                val sourceIndex = localPool.indexOfFirst { it.id == task.id }
-                                if (sourceIndex >= 0) {
-                                    val previousToday = displayedMandatory
-                                    val updatedPool = localPool.toMutableList().apply {
-                                        removeAll { it.id == task.id }
-                                        if (previousToday != null && previousToday.id != task.id) {
-                                            add(
-                                                sourceIndex.coerceIn(0, size),
-                                                previousToday.copy(slot = null, overdueSinceEpochDay = null)
-                                            )
-                                        }
-                                    }.mapIndexed { newIndex, poolTask ->
-                                        poolTask.copy(orderIndex = newIndex)
-                                    }
-
-                                    localPool = updatedPool
-                                    pendingTodayTask = task.copy(slot = 0, overdueSinceEpochDay = null)
-                                    pendingPreviousTodayId = previousToday?.id
-                                    pendingPersistedOrder = null
-                                    viewModel.replaceTodayWith(task.id, updatedPool.map { it.id })
-                                }
+                            if (
+                                !todayLocked &&
+                                displayedMandatory != null &&
+                                todayTop != null &&
+                                draggedTop <= todayTop
+                            ) {
+                                viewModel.replaceTodayWith(task.id)
                             } else {
-                                reorderBacklogOnRelease(task, draggedTop)
+                                reorderPoolOnRelease(task, draggedTop)
                             }
                         }
                     },
@@ -450,6 +442,61 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         draggingTaskId = if (isDragging) task.id else null
                     }
                 )
+            }
+
+            item { Spacer(Modifier.height(6.dp)) }
+
+            item {
+                Column {
+                    SectionTitle("Bonus backlog")
+                    Text(
+                        "Small tasks live here. Use the star to bring one into Bonus today.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (smallPool.isEmpty()) {
+                item {
+                    Text(
+                        "No Small tasks in backlog.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 10.dp)
+                    )
+                }
+            }
+
+            itemsIndexed(smallPool, key = { _, task -> "small-${task.id}" }) { _, task ->
+                val baseItemModifier = if (draggingTaskId == task.id) {
+                    Modifier.zIndex(10f)
+                } else {
+                    Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 170))
+                }
+                SwipeableTaskRow(
+                    modifier = baseItemModifier.onGloballyPositioned { coordinates ->
+                        taskCardBounds[task.id] = coordinates.boundsInRoot()
+                    },
+                    task = task,
+                    tag = null,
+                    onEdit = { editing = task },
+                    onDelete = { deleteWithUndo(task) },
+                    onComplete = { completeWithUndo(task) },
+                    onMakeBonus = if (bonusTasks.size < 2) {
+                        { viewModel.activateBonusFromPool(task.id) }
+                    } else null,
+                    dragHint = "Long-press and drag; release to reorder",
+                    onDragRelease = { offsetY ->
+                        val startTop = taskCardBounds[task.id]?.top
+                        if (startTop != null) {
+                            reorderPoolOnRelease(task, startTop + offsetY)
+                        }
+                    },
+                    onDraggingStateChanged = { isDragging ->
+                        draggingTaskId = if (isDragging) task.id else null
+                    }
+                )
+            }
             }
         }
     }
@@ -509,6 +556,15 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     }
 }
 
+private fun scheduledQueueTag(index: Int): String = when (index) {
+    0 -> "TOMORROW"
+    1 -> "DAY AFTER"
+    else -> LocalDate.now()
+        .plusDays(index.toLong() + 1L)
+        .format(DateTimeFormatter.ofPattern("dd-MMM", Locale.getDefault()))
+        .uppercase(Locale.getDefault())
+}
+
 @Composable
 private fun SectionTitle(text: String) {
     Text(
@@ -527,6 +583,7 @@ private fun SwipeableTaskRow(
     onDelete: () -> Unit,
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
+    onMakeToday: (() -> Unit)? = null,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
     onDragRelease: ((Float) -> Unit)? = null,
@@ -726,6 +783,16 @@ private fun TaskRow(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             if (tag != null) StatusPill(tag)
+
+            if (onMakeToday != null) {
+                IconButton(onClick = onMakeToday, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        Icons.Default.Today,
+                        contentDescription = "Make Today",
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
+            }
 
             if (onMakeBonus != null) {
                 IconButton(onClick = onMakeBonus, modifier = Modifier.size(38.dp)) {
