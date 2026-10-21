@@ -97,6 +97,8 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE completion_log ADD COLUMN taskSizeSnapshot TEXT NOT NULL DEFAULT 'BIG'")
+                // Existing v1.8/alpha1 Bonus slots semantically become Small tasks.
+                db.execSQL("UPDATE tasks SET taskSize = 'SMALL' WHERE slot IN (1, 2)")
             }
         }
 
