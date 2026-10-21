@@ -307,7 +307,16 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             }
 
             displayedMandatory?.let { task ->
-                item { SectionTitle(stringResource(R.string.today)) }
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        SectionTitle(stringResource(R.string.today))
+                        if (todayLocked) StatusPill(stringResource(R.string.locked_upper))
+                    }
+                }
                 item(key = "today-${task.id}") {
                     SwipeableTaskRow(
                         modifier = (if (draggingTaskId == task.id) Modifier.zIndex(10f) else Modifier)
@@ -317,9 +326,10 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             },
                         task = task,
                         tag = stringResource(R.string.today_upper),
-                        onEdit = { editing = task },
+                        onEdit = { if (!todayLocked) editing = task },
                         onDelete = { deleteWithUndo(task) },
                         onComplete = { completeWithUndo(task) },
+                        allowDelete = !todayLocked,
                         onMakeBonus = null,
                         dragHint = if (!todayLocked) stringResource(R.string.drag_to_next_tasks) else stringResource(R.string.today_locked),
                         onDragRelease = if (!todayLocked) { offsetY ->
@@ -586,6 +596,7 @@ private fun SwipeableTaskRow(
     onDelete: () -> Unit,
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
+    allowDelete: Boolean = true,
     onMakeToday: (() -> Unit)? = null,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
@@ -617,7 +628,11 @@ private fun SwipeableTaskRow(
     SwipeToDismiss(
         modifier = modifier.zIndex(if (rowDragging) 10f else 0f),
         state = dismissState,
-        directions = setOf(DismissDirection.StartToEnd, DismissDirection.EndToStart),
+        directions = if (allowDelete) {
+            setOf(DismissDirection.StartToEnd, DismissDirection.EndToStart)
+        } else {
+            setOf(DismissDirection.StartToEnd)
+        },
         background = {
             val direction = dismissState.dismissDirection
             if (direction != null && !rowDragging) {
