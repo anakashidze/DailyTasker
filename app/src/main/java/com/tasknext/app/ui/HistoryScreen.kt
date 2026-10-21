@@ -21,9 +21,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.tasknext.app.R
 import com.tasknext.app.data.CompletionLog
+import com.tasknext.app.data.HistoryEventType
 import com.tasknext.app.data.TaskSize
 import com.tasknext.app.viewmodel.TaskViewModel
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,7 +113,18 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     }
 
     selectedLog?.let { log ->
-        HistoryDetailDialog(log = log, onDismiss = { selectedLog = null })
+        val alreadyRecovered = history.any {
+            it.eventType == HistoryEventType.RECOVERED && it.recoveredFromLogId == log.id
+        }
+        HistoryDetailDialog(
+            log = log,
+            canRecover = log.eventType != HistoryEventType.RECOVERED && !alreadyRecovered,
+            onRecover = {
+                viewModel.recoverHistoryRecord(log.id)
+                selectedLog = null
+            },
+            onDismiss = { selectedLog = null }
+        )
     }
 
     if (confirmClearAll) {
@@ -168,6 +182,15 @@ private fun HistoryRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Text(
+                    "• " + historyEventLabel(log.eventType),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = when (log.eventType) {
+                        HistoryEventType.COMPLETED -> MaterialTheme.colorScheme.primary
+                        HistoryEventType.DELETED -> MaterialTheme.colorScheme.error
+                        HistoryEventType.RECOVERED -> MaterialTheme.colorScheme.tertiary
+                    }
+                )
             }
         }
         Text(
@@ -186,7 +209,12 @@ private fun HistoryRow(
 }
 
 @Composable
-private fun HistoryDetailDialog(log: CompletionLog, onDismiss: () -> Unit) {
+private fun HistoryDetailDialog(
+    log: CompletionLog,
+    canRecover: Boolean,
+    onRecover: () -> Unit,
+    onDismiss: () -> Unit
+) {
     val color = historyColor(log.colorHexSnapshot)
     val completedFormat = remember { SimpleDateFormat("EEEE, MMM d yyyy • HH:mm", Locale.getDefault()) }
 
@@ -234,18 +262,49 @@ private fun HistoryDetailDialog(log: CompletionLog, onDismiss: () -> Unit) {
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(stringResource(R.string.completed), style = MaterialTheme.typography.labelMedium)
+                    Text(historyEventLabel(log.eventType), style = MaterialTheme.typography.labelMedium)
                     Text(
                         completedFormat.format(Date(log.completedAtEpochMillis)),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
+
+                log.effectiveEpochDay?.let { effective ->
+                    val eventEpochDay = java.time.Instant.ofEpochMilli(log.completedAtEpochMillis)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toLocalDate()
+                        .toEpochDay()
+                    if (effective != eventEpochDay) {
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(stringResource(R.string.effective_date), style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                LocalDate.ofEpochDay(effective)
+                                    .format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (canRecover) {
+                    TextButton(onClick = onRecover) {
+                        Text(stringResource(R.string.recover_task))
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
+            }
         }
     )
+}
+
+@Composable
+private fun historyEventLabel(eventType: HistoryEventType): String = when (eventType) {
+    HistoryEventType.COMPLETED -> stringResource(R.string.history_completed)
+    HistoryEventType.DELETED -> stringResource(R.string.history_deleted)
+    HistoryEventType.RECOVERED -> stringResource(R.string.history_recovered)
 }
 
 @Composable
