@@ -101,4 +101,10 @@
     <string name="complete_overdue_question">ეს დავალება გუშინდელია. როდის შეასრულეთ?</string>
     <string name="completed_yesterday">გუშინ შესრულდა</string>
     <string name="complete_today">დღეს შესრულდა</string>
+    <string name="notification_planning_channel">დაგეგმვის შეხსენებები</string>
+    <string name="notification_plan_title">დაგეგმეთ ხვალინდელი დღე</string>
+    <string name="notification_plan_body">დაამატეთ ან აირჩიეთ დიდი დავალება ხვალისთვის.</string>
+    <string name="notification_streak_title">თქვენი სერია რისკის ქვეშაა</string>
+    <string name="notification_streak_body">თქვენი %1$d-დღიანი სერია ჯერ ღიაა. შეასრულეთ დღევანდელი დავალება ან გამოიყენეთ დასვენების კრედიტი.</string>
+    <string name="notification_today_open_body">დღე ჯერ ღიაა. შეასრულეთ დიდი დავალება ან გამოიყენეთ დასვენების კრედიტი.</string>
 </resources>
