@@ -22,11 +22,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.tasknext.app.R
 import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
 import com.tasknext.app.data.TaskGroupDefinition
@@ -57,9 +59,10 @@ private val groupIconChoices = listOf(
     "send", "notifications"
 )
 
+@Composable
 private fun taskSizeLabel(taskSize: TaskSize): String = when (taskSize) {
-    TaskSize.BIG -> "Big"
-    TaskSize.SMALL -> "Small"
+    TaskSize.BIG -> stringResource(R.string.task_size_big)
+    TaskSize.SMALL -> stringResource(R.string.task_size_small)
 }
 
 private fun parseColor(hex: String): Color = try {
@@ -154,7 +157,7 @@ fun AddEditTaskDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                if (existing == null) "Add task" else "Edit task",
+                if (existing == null) stringResource(R.string.add_task) else stringResource(R.string.edit_task),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold
             )
@@ -172,7 +175,7 @@ fun AddEditTaskDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(titleFocusRequester),
-                    label = { Text("Title") },
+                    label = { Text(stringResource(R.string.title)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Sentences,
@@ -186,7 +189,7 @@ fun AddEditTaskDialog(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Task size",
+                            stringResource(R.string.task_size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -243,7 +246,7 @@ fun AddEditTaskDialog(
 
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Group",
+                            stringResource(R.string.group),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -306,7 +309,7 @@ fun AddEditTaskDialog(
                                 }
                                 HorizontalDivider()
                                 DropdownMenuItem(
-                                    text = { Text("Add new group") },
+                                    text = { Text(stringResource(R.string.add_new_group)) },
                                     leadingIcon = {
                                         GroupIcon(
                                             key = "star",
@@ -335,14 +338,14 @@ fun AddEditTaskDialog(
                             modifier = Modifier.padding(10.dp),
                             verticalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
-                            Text("New group", style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.new_group), style = MaterialTheme.typography.titleSmall)
                             OutlinedTextField(
                                 value = newGroupName,
                                 onValueChange = { newGroupName = it },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .focusRequester(groupNameFocusRequester),
-                                label = { Text("Group name") },
+                                label = { Text(stringResource(R.string.group_name)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     capitalization = KeyboardCapitalization.Words,
@@ -350,7 +353,7 @@ fun AddEditTaskDialog(
                                 )
                             )
 
-                            Text("Icon", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.icon), style = MaterialTheme.typography.labelMedium)
                             val iconColumns = remember {
                                 groupIconChoices.chunked(2)
                             }
@@ -397,7 +400,7 @@ fun AddEditTaskDialog(
                                 }
                             }
 
-                            Text("Color", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.color), style = MaterialTheme.typography.labelMedium)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -424,7 +427,7 @@ fun AddEditTaskDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End
                             ) {
-                                TextButton(onClick = { showNewGroup = false }) { Text("Cancel") }
+                                TextButton(onClick = { showNewGroup = false }) { Text(stringResource(R.string.cancel)) }
                                 TextButton(
                                     enabled = newGroupName.isNotBlank() &&
                                         menuGroups.none { it.name.equals(newGroupName.trim(), ignoreCase = true) },
@@ -440,7 +443,7 @@ fun AddEditTaskDialog(
                                         showNewGroup = false
                                     }
                                 ) {
-                                    Text("Add")
+                                    Text(stringResource(R.string.add))
                                 }
                             }
                         }
@@ -451,7 +454,7 @@ fun AddEditTaskDialog(
                     value = comment,
                     onValueChange = { comment = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Comment (optional)") },
+                    label = { Text(stringResource(R.string.comment_optional)) },
                     minLines = 1,
                     maxLines = 2,
                     keyboardOptions = KeyboardOptions(
@@ -492,11 +495,11 @@ fun AddEditTaskDialog(
                     )
                 }
             ) {
-                Text(if (existing == null) "Add" else "Save")
+                Text(if (existing == null) stringResource(R.string.add) else stringResource(R.string.save))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 
@@ -562,7 +565,7 @@ private fun ReminderRow(
             }
             Spacer(Modifier.width(7.dp))
             Text(
-                text = "Remind me",
+                text = stringResource(R.string.remind_me),
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -610,15 +613,15 @@ fun SimpleTimePickerDialog(
                 modifier = Modifier.padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Select time", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.select_time), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(16.dp))
                 TimePicker(state = state)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
-                    TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("OK") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text(stringResource(R.string.ok)) }
                 }
             }
         }
