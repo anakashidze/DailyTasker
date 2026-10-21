@@ -2,6 +2,7 @@ package com.tasknext.app.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -11,8 +12,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tasknext.app.R
 import com.tasknext.app.viewmodel.TaskViewModel
 
@@ -56,7 +59,13 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
+                title = {
+                    Text(
+                        stringResource(R.string.settings_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
@@ -70,139 +79,159 @@ fun SettingsScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                stringResource(R.string.settings_daily_planning),
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Text(stringResource(R.string.today_lock_time))
-            Text(
-                stringResource(R.string.today_lock_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedButton(onClick = { showLockTimePicker = true }) {
-                Text("%02d:%02d".format(lockHour, lockMinute))
+            CompactSection(
+                title = stringResource(R.string.settings_daily_planning)
+            ) {
+                CompactValueRow(
+                    label = stringResource(R.string.today_lock_time),
+                    value = "%02d:%02d".format(lockHour, lockMinute),
+                    onValueClick = { showLockTimePicker = true }
+                )
+                Text(
+                    stringResource(R.string.today_lock_description),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 2.dp, end = 2.dp, bottom = 2.dp)
+                )
             }
 
-            HorizontalDivider()
-
-            Text(
-                stringResource(R.string.settings_notifications),
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            SettingsSwitchRow(stringResource(R.string.notifications_enabled), notificationsEnabled) { enabled ->
-                notificationsEnabled = enabled
-                viewModel.setNotificationsEnabled(enabled)
-                if (enabled) onRequestNotificationPermission()
-            }
-
-            Text(stringResource(R.string.default_reminder_time))
-            Text(
-                stringResource(R.string.default_reminder_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedButton(onClick = { showDefaultTimePicker = true }) {
-                Text("%02d:%02d".format(defaultHour, defaultMinute))
-            }
-
-            Text(stringResource(R.string.snooze_duration))
-            OutlinedTextField(
-                value = snoozeText,
-                onValueChange = { value ->
-                    if (value.all { it.isDigit() } && value.length <= 4) {
-                        snoozeText = value
-                        value.toIntOrNull()?.coerceIn(1, 24 * 60)?.let(viewModel::setSnoozeMinutes)
+            CompactSection(
+                title = stringResource(R.string.settings_notifications)
+            ) {
+                CompactToggleRow(
+                    label = stringResource(R.string.notifications_enabled),
+                    checked = notificationsEnabled,
+                    onChange = { enabled ->
+                        notificationsEnabled = enabled
+                        viewModel.setNotificationsEnabled(enabled)
+                        if (enabled) onRequestNotificationPermission()
                     }
-                },
-                modifier = Modifier.width(130.dp),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
+                )
 
-            SettingsSwitchRow(stringResource(R.string.plan_tomorrow_reminder), planEnabled) {
-                planEnabled = it
-                settings.planTomorrowReminderEnabled = it
-            }
-            if (planEnabled) {
-                OutlinedButton(onClick = { showPlanTimePicker = true }) {
-                    Text("%02d:%02d".format(planHour, planMinute))
-                }
-            }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
 
-            SettingsSwitchRow(stringResource(R.string.streak_risk_reminder), streakReminderEnabled) {
-                streakReminderEnabled = it
-                settings.streakRiskReminderEnabled = it
-            }
-            if (streakReminderEnabled) {
-                OutlinedButton(onClick = { showStreakTimePicker = true }) {
-                    Text("%02d:%02d".format(streakHour, streakMinute))
-                }
-            }
+                CompactValueRow(
+                    label = stringResource(R.string.default_reminder_time),
+                    value = "%02d:%02d".format(defaultHour, defaultMinute),
+                    onValueClick = { showDefaultTimePicker = true },
+                    enabled = notificationsEnabled
+                )
 
-            HorizontalDivider()
-
-            Text(
-                stringResource(R.string.settings_appearance_language),
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            SettingsSwitchRow(stringResource(R.string.dark_theme), darkTheme) {
-                darkTheme = it
-                settings.darkTheme = it
-                onDarkThemeChanged(it)
-            }
-
-            SettingsSwitchRow(stringResource(R.string.group_history_by_day), groupByDay) {
-                groupByDay = it
-                settings.groupHistoryByDay = it
-            }
-
-            Text(stringResource(R.string.language))
-            Box {
-                OutlinedButton(onClick = { languageExpanded = true }) {
-                    Text(
-                        when (languageCode) {
-                            "ka" -> "ქართული"
-                            "ru" -> "Русский"
-                            else -> "English"
+                CompactSnoozeRow(
+                    label = stringResource(R.string.snooze_duration),
+                    value = snoozeText,
+                    enabled = notificationsEnabled,
+                    onValueChange = { value ->
+                        if (value.all { it.isDigit() } && value.length <= 4) {
+                            snoozeText = value
+                            value.toIntOrNull()?.coerceIn(1, 24 * 60)?.let(viewModel::setSnoozeMinutes)
                         }
-                    )
-                }
-                DropdownMenu(
-                    expanded = languageExpanded,
-                    onDismissRequest = { languageExpanded = false }
+                    }
+                )
+
+                CompactNotificationRow(
+                    label = stringResource(R.string.plan_tomorrow_reminder),
+                    checked = planEnabled,
+                    time = "%02d:%02d".format(planHour, planMinute),
+                    enabled = notificationsEnabled,
+                    onToggle = {
+                        planEnabled = it
+                        settings.planTomorrowReminderEnabled = it
+                    },
+                    onTimeClick = { showPlanTimePicker = true }
+                )
+
+                CompactNotificationRow(
+                    label = stringResource(R.string.streak_risk_reminder),
+                    checked = streakReminderEnabled,
+                    time = "%02d:%02d".format(streakHour, streakMinute),
+                    enabled = notificationsEnabled,
+                    onToggle = {
+                        streakReminderEnabled = it
+                        settings.streakRiskReminderEnabled = it
+                    },
+                    onTimeClick = { showStreakTimePicker = true }
+                )
+            }
+
+            CompactSection(
+                title = stringResource(R.string.settings_appearance_language)
+            ) {
+                CompactToggleRow(
+                    label = stringResource(R.string.dark_theme),
+                    checked = darkTheme,
+                    onChange = {
+                        darkTheme = it
+                        settings.darkTheme = it
+                        onDarkThemeChanged(it)
+                    }
+                )
+
+                CompactToggleRow(
+                    label = stringResource(R.string.group_history_by_day),
+                    checked = groupByDay,
+                    onChange = {
+                        groupByDay = it
+                        settings.groupHistoryByDay = it
+                    }
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 44.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf(
-                        "en" to "English",
-                        "ka" to "ქართული",
-                        "ru" to "Русский"
-                    ).forEach { (code, label) ->
-                        DropdownMenuItem(
-                            text = { Text(label) },
-                            onClick = {
-                                languageExpanded = false
-                                if (languageCode != code) {
-                                    languageCode = code
-                                    settings.languageCode = code
-                                    onLanguageChanged(code)
-                                }
+                    Text(
+                        stringResource(R.string.language),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box {
+                        OutlinedButton(
+                            onClick = { languageExpanded = true },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Text(
+                                when (languageCode) {
+                                    "ka" -> "ქართული"
+                                    "ru" -> "Русский"
+                                    else -> "English"
+                                },
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = languageExpanded,
+                            onDismissRequest = { languageExpanded = false }
+                        ) {
+                            listOf(
+                                "en" to "English",
+                                "ka" to "ქართული",
+                                "ru" to "Русский"
+                            ).forEach { (code, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        languageExpanded = false
+                                        if (languageCode != code) {
+                                            languageCode = code
+                                            settings.languageCode = code
+                                            onLanguageChanged(code)
+                                        }
+                                    }
+                                )
                             }
-                        )
+                        }
                     }
                 }
             }
 
-            Text(
-                stringResource(R.string.language_restart_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Spacer(Modifier.height(8.dp))
         }
     }
 
@@ -270,18 +299,159 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsSwitchRow(
+private fun CompactSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp)
+        )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                content = content
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactToggleRow(
     label: String,
     checked: Boolean,
-    onChange: (Boolean) -> Unit
+    onChange: (Boolean) -> Unit,
+    enabled: Boolean = true
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 42.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.weight(1f))
-        Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onChange)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            enabled = enabled
+        )
+    }
+}
+
+@Composable
+private fun CompactValueRow(
+    label: String,
+    value: String,
+    onValueClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 42.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(
+            onClick = onValueClick,
+            enabled = enabled,
+            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 2.dp),
+            modifier = Modifier.height(34.dp)
+        ) {
+            Text(value, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun CompactSnoozeRow(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onValueChange: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 42.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.labelMedium,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.width(78.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+        )
+    }
+}
+
+@Composable
+private fun CompactNotificationRow(
+    label: String,
+    checked: Boolean,
+    time: String,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onTimeClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+            maxLines = 2
+        )
+        TextButton(
+            onClick = onTimeClick,
+            enabled = enabled && checked,
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+            modifier = Modifier.height(32.dp)
+        ) {
+            Text(time, style = MaterialTheme.typography.labelSmall)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onToggle,
+            enabled = enabled
+        )
     }
 }
