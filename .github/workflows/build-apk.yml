@@ -6,15 +6,11 @@ on:
     branches:
       - main
       - "chatgpt/**"
-  pull_request:
-    branches:
-      - main
-
 permissions:
   contents: read
 
 concurrency:
-  group: tasknext-build-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: tasknext-build-${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
