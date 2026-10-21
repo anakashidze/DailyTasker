@@ -87,4 +87,18 @@
     <string name="widget_all_done">დღევანდელი მთავარი დავალება შესრულებულია</string>
     <string name="widget_no_task_selected">დიდი დავალება არჩეული არაა</string>
     <string name="today_selection_closed">დღევანდელი დავალება ჩაკეტვის დრომდე არ აგირჩევიათ. არჩევის დრო დასრულებულია.</string>
+    <string name="rest_credit_count">%1$d დასვენების კრედიტი</string>
+    <string name="rest_credits_count">%1$d დასვენების კრედიტი</string>
+    <string name="use_rest_credit">დასვენების კრედიტის გამოყენება</string>
+    <string name="rest_today">დღეს დასვენებაა</string>
+    <string name="streak_protected">სერია დაცულია. დასვენების დღე სერიას არ ზრდის.</string>
+    <string name="history_completed">შესრულებული</string>
+    <string name="history_deleted">წაშლილი</string>
+    <string name="history_recovered">აღდგენილი</string>
+    <string name="recover_task">დავალების აღდგენა</string>
+    <string name="effective_date">ჩათვლილი თარიღი</string>
+    <string name="complete_overdue_title">ვადაგადაცილებული დავალების დასრულება</string>
+    <string name="complete_overdue_question">ეს დავალება გუშინდელია. როდის შეასრულეთ?</string>
+    <string name="completed_yesterday">გუშინ შესრულდა</string>
+    <string name="complete_today">დღეს შესრულდა</string>
 </resources>
