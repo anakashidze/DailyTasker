@@ -103,7 +103,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateTask(task: Task) = viewModelScope.launch {
         repo.updateTask(task)
-        syncTaskReminder(task)
+        repo.getTask(task.id)?.let { syncTaskReminder(it) }
         refreshTodayWidget()
     }
 
