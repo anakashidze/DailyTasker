@@ -82,4 +82,8 @@
     <string name="delete">წაშლა</string>
     <string name="comment">კომენტარი</string>
     <string name="locked_upper">ჩაკეტილია</string>
+    <string name="widget_today_group">დღეს • %1$s</string>
+    <string name="widget_day_complete">დღე შესრულებულია</string>
+    <string name="widget_all_done">დღევანდელი მთავარი დავალება შესრულებულია</string>
+    <string name="widget_no_task_selected">დიდი დავალება არჩეული არაა</string>
 </resources>
