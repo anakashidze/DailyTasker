@@ -40,11 +40,13 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.tasknext.app.R
 import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
@@ -228,7 +230,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("Tasks") },
+                title = { Text(stringResource(R.string.tasks)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back to Home")
@@ -288,14 +290,14 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (overdueTasks.isNotEmpty()) {
-                item { SectionTitle("Overdue") }
+                item { SectionTitle(stringResource(R.string.overdue)) }
                 items(overdueTasks, key = { "overdue-${it.id}" }) { task ->
                     SwipeableTaskRow(
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             taskCardBounds[task.id] = coordinates.boundsInRoot()
                         },
                         task = task,
-                        tag = "OVERDUE",
+                        tag = stringResource(R.string.overdue_upper),
                         onEdit = { editing = task },
                         onDelete = { deleteWithUndo(task) },
                         onComplete = { completeWithUndo(task) }
@@ -305,7 +307,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             }
 
             displayedMandatory?.let { task ->
-                item { SectionTitle("Today") }
+                item { SectionTitle(stringResource(R.string.today)) }
                 item(key = "today-${task.id}") {
                     SwipeableTaskRow(
                         modifier = (if (draggingTaskId == task.id) Modifier.zIndex(10f) else Modifier)
@@ -314,12 +316,12 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                                 taskCardBounds[task.id] = coordinates.boundsInRoot()
                             },
                         task = task,
-                        tag = "TODAY",
+                        tag = stringResource(R.string.today_upper),
                         onEdit = { editing = task },
                         onDelete = { deleteWithUndo(task) },
                         onComplete = { completeWithUndo(task) },
                         onMakeBonus = null,
-                        dragHint = if (!todayLocked) "Long-press and drag into Next tasks; release to move" else "Today is locked",
+                        dragHint = if (!todayLocked) stringResource(R.string.drag_to_next_tasks) else stringResource(R.string.today_locked),
                         onDragRelease = if (!todayLocked) { offsetY ->
                             val startTop = taskCardBounds[task.id]?.top ?: todayCardTopPx
                             val headerTop = backlogHeaderTopPx
@@ -340,18 +342,18 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             }
 
             if (bonusTasks.isNotEmpty()) {
-                item { SectionTitle("Bonus today") }
+                item { SectionTitle(stringResource(R.string.bonus_today)) }
                 items(bonusTasks, key = { "bonus-${it.id}" }) { task ->
                     SwipeableTaskRow(
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             taskCardBounds[task.id] = coordinates.boundsInRoot()
                         },
                         task = task,
-                        tag = "BONUS",
+                        tag = stringResource(R.string.bonus_upper),
                         onEdit = { editing = task },
                         onDelete = { deleteWithUndo(task) },
                         onComplete = { completeWithUndo(task) },
-                        dragHint = "Long-press and drag into Backlog; release to move",
+                        dragHint = stringResource(R.string.drag_to_bonus_backlog),
                         onDragRelease = { offsetY ->
                             val startTop = taskCardBounds[task.id]?.top
                             val headerTop = backlogHeaderTopPx
@@ -377,9 +379,9 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         backlogHeaderTopPx = coordinates.positionInRoot().y
                     }
                 ) {
-                    SectionTitle("Next tasks")
+                    SectionTitle(stringResource(R.string.next_tasks))
                     Text(
-                        "Big tasks follow the schedule shown on the right. Reorder them and the dates move with the positions.",
+                        stringResource(R.string.next_tasks_description),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -389,7 +391,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             if (bigPool.isEmpty()) {
                 item {
                     Text(
-                        "No Big tasks scheduled.",
+                        stringResource(R.string.no_big_tasks),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 10.dp)
                     )
@@ -420,7 +422,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         { viewModel.chooseToday(task.id) }
                     } else null,
                     onMakeBonus = null,
-                    dragHint = "Long-press and drag; release to reorder",
+                    dragHint = stringResource(R.string.drag_to_reorder),
                     onDragRelease = { offsetY ->
                         val startTop = taskCardBounds[task.id]?.top
                         if (startTop != null) {
@@ -448,9 +450,9 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
 
             item {
                 Column {
-                    SectionTitle("Bonus backlog")
+                    SectionTitle(stringResource(R.string.bonus_backlog))
                     Text(
-                        "Small tasks live here. Use the star to bring one into Bonus today.",
+                        stringResource(R.string.bonus_backlog_description),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -460,7 +462,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             if (smallPool.isEmpty()) {
                 item {
                     Text(
-                        "No Small tasks in backlog.",
+                        stringResource(R.string.no_small_tasks),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 10.dp)
                     )
@@ -485,7 +487,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     onMakeBonus = if (bonusTasks.size < 2) {
                         { viewModel.activateBonusFromPool(task.id) }
                     } else null,
-                    dragHint = "Long-press and drag; release to reorder",
+                    dragHint = stringResource(R.string.drag_to_reorder),
                     onDragRelease = { offsetY ->
                         val startTop = taskCardBounds[task.id]?.top
                         if (startTop != null) {
@@ -556,9 +558,10 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     }
 }
 
+@Composable
 private fun scheduledQueueTag(index: Int): String = when (index) {
-    0 -> "TOMORROW"
-    1 -> "DAY AFTER"
+    0 -> stringResource(R.string.tomorrow_upper)
+    1 -> stringResource(R.string.day_after_upper)
     else -> LocalDate.now()
         .plusDays(index.toLong() + 1L)
         .format(DateTimeFormatter.ofPattern("dd-MMM", Locale.getDefault()))
@@ -621,7 +624,7 @@ private fun SwipeableTaskRow(
                 val isComplete = direction == DismissDirection.StartToEnd
                 val bg = if (isComplete) Color(0xFFD7F3DF) else Color(0xFFFFD8D8)
                 val icon = if (isComplete) Icons.Default.Check else Icons.Default.Delete
-                val label = if (isComplete) "Complete" else "Delete"
+                val label = stringResource(if (isComplete) R.string.complete else R.string.delete)
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
@@ -645,6 +648,7 @@ private fun SwipeableTaskRow(
                 task = task,
                 tag = tag,
                 onEdit = onEdit,
+                onMakeToday = onMakeToday,
                 onMakeBonus = onMakeBonus,
                 dragHint = dragHint,
                 onDragRelease = onDragRelease,
@@ -662,6 +666,7 @@ private fun TaskRow(
     task: Task,
     tag: String?,
     onEdit: () -> Unit,
+    onMakeToday: (() -> Unit)? = null,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
     onDragRelease: ((Float) -> Unit)? = null,
@@ -788,7 +793,7 @@ private fun TaskRow(
                 IconButton(onClick = onMakeToday, modifier = Modifier.size(38.dp)) {
                     Icon(
                         Icons.Default.Today,
-                        contentDescription = "Make Today",
+                        contentDescription = stringResource(R.string.make_today),
                         modifier = Modifier.size(21.dp)
                     )
                 }
@@ -798,7 +803,7 @@ private fun TaskRow(
                 IconButton(onClick = onMakeBonus, modifier = Modifier.size(38.dp)) {
                     Icon(
                         Icons.Default.StarBorder,
-                        contentDescription = "Make bonus today",
+                        contentDescription = stringResource(R.string.make_bonus_today),
                         modifier = Modifier.size(21.dp)
                     )
                 }
@@ -809,7 +814,7 @@ private fun TaskRow(
 
 @Composable
 private fun StatusPill(tag: String) {
-    val overdue = tag == "OVERDUE"
+    val overdue = tag == stringResource(R.string.overdue_upper)
     val content = if (overdue) Color(0xFFB4233A) else MaterialTheme.colorScheme.primary
     val container = if (overdue) Color(0xFFFFE7EC) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
     Surface(
@@ -847,7 +852,9 @@ private fun TaskSizePill(taskSize: TaskSize) {
                     .background(palette.content, CircleShape)
             )
             Text(
-                taskSize.name.lowercase().replaceFirstChar { it.uppercase() },
+                stringResource(
+                    if (taskSize == TaskSize.BIG) R.string.task_size_big else R.string.task_size_small
+                ),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = palette.content
