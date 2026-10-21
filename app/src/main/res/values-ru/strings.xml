@@ -64,4 +64,11 @@
     <string name="tap_when_done">нажмите после выполнения</string>
     <string name="day_complete">День выполнен</string>
     <string name="day_complete_description">Большая задача на сегодня выполнена.</string>
+    <string name="new_group">Новая группа</string>
+    <string name="group_name">Название группы</string>
+    <string name="icon">Значок</string>
+    <string name="color">Цвет</string>
+    <string name="add_new_group">Добавить новую группу</string>
+    <string name="select_time">Выберите время</string>
+    <string name="ok">ОК</string>
 </resources>
