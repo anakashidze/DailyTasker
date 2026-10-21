@@ -1,6 +1,8 @@
 package com.tasknext.app
 
 import android.Manifest
+import android.content.Context
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +20,7 @@ import androidx.core.view.WindowCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import java.util.Locale
 import com.tasknext.app.ui.HistoryScreen
 import com.tasknext.app.ui.HomeScreen
 import com.tasknext.app.ui.SettingsScreen
@@ -27,6 +30,17 @@ import com.tasknext.app.ui.theme.TaskNextTheme
 import com.tasknext.app.viewmodel.TaskViewModel
 
 class MainActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: Context) {
+        val prefs = newBase.getSharedPreferences("tasknext_settings", Context.MODE_PRIVATE)
+        val languageCode = prefs.getString("language_code", "en") ?: "en"
+        val locale = Locale.forLanguageTag(languageCode)
+        Locale.setDefault(locale)
+        val config = Configuration(newBase.resources.configuration).apply {
+            setLocale(locale)
+        }
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
 
     private val viewModel: TaskViewModel by viewModels()
 
@@ -83,9 +97,9 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             viewModel = viewModel,
                             onBack = { navController.popBackStack() },
-                            onOpenHistory = { navController.navigate("history") },
                             onDarkThemeChanged = { darkTheme = it },
-                            onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() }
+                            onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() },
+                            onLanguageChanged = { recreate() }
                         )
                     }
                     composable("history") {
