@@ -421,6 +421,22 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         allowDelete = !todayLocked,
                         onMakeBonus = null,
                         dragHint = if (!todayLocked) stringResource(R.string.drag_to_next_tasks) else stringResource(R.string.today_locked),
+                        dragCompensation = if (draggingTaskId == task.id) dragScrollCompensation else 0f,
+                        onDragMove = if (!todayLocked) { effectiveOffsetY ->
+                            val bounds = taskCardBounds[task.id]
+                            val headerTop = backlogHeaderTopPx
+                            if (bounds != null) {
+                                val draggedTop = bounds.top + effectiveOffsetY
+                                maybeAutoScroll(draggedTop + bounds.height / 2f)
+                                if (headerTop != null && draggedTop >= headerTop) {
+                                    dragPreviewIndex = poolInsertionIndexForTop(TaskSize.BIG, null, draggedTop)
+                                    dragOriginalIndex = -1
+                                    draggingTaskSize = TaskSize.BIG
+                                } else {
+                                    dragPreviewIndex = null
+                                }
+                            }
+                        } else null,
                         onDragRelease = if (!todayLocked) { offsetY ->
                             val startTop = taskCardBounds[task.id]?.top ?: todayCardTopPx
                             val headerTop = backlogHeaderTopPx
@@ -433,7 +449,16 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             }
                         } else null,
                         onDraggingStateChanged = { isDragging ->
-                            draggingTaskId = if (isDragging) task.id else null
+                            if (isDragging) {
+                                draggingTaskId = task.id
+                                draggingTaskSize = TaskSize.BIG
+                                dragOriginalIndex = -1
+                                dragPreviewIndex = null
+                                dragScrollCompensation = 0f
+                            } else {
+                                draggingTaskId = null
+                                clearDragPreview()
+                            }
                         }
                     )
                 }
@@ -453,6 +478,22 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         onDelete = { deleteWithUndo(task) },
                         onComplete = { completeWithUndo(task) },
                         dragHint = stringResource(R.string.drag_to_bonus_backlog),
+                        dragCompensation = if (draggingTaskId == task.id) dragScrollCompensation else 0f,
+                        onDragMove = { effectiveOffsetY ->
+                            val bounds = taskCardBounds[task.id]
+                            val headerTop = backlogHeaderTopPx
+                            if (bounds != null) {
+                                val draggedTop = bounds.top + effectiveOffsetY
+                                maybeAutoScroll(draggedTop + bounds.height / 2f)
+                                if (headerTop != null && draggedTop >= headerTop) {
+                                    dragPreviewIndex = poolInsertionIndexForTop(TaskSize.SMALL, null, draggedTop)
+                                    dragOriginalIndex = -1
+                                    draggingTaskSize = TaskSize.SMALL
+                                } else {
+                                    dragPreviewIndex = null
+                                }
+                            }
+                        },
                         onDragRelease = { offsetY ->
                             val startTop = taskCardBounds[task.id]?.top
                             val headerTop = backlogHeaderTopPx
@@ -465,7 +506,16 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             }
                         },
                         onDraggingStateChanged = { isDragging ->
-                            draggingTaskId = if (isDragging) task.id else null
+                            if (isDragging) {
+                                draggingTaskId = task.id
+                                draggingTaskSize = TaskSize.SMALL
+                                dragOriginalIndex = -1
+                                dragPreviewIndex = null
+                                dragScrollCompensation = 0f
+                            } else {
+                                draggingTaskId = null
+                                clearDragPreview()
+                            }
                         }
                     )
                 }
@@ -498,11 +548,16 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             }
 
             itemsIndexed(bigPool, key = { _, task -> "big-${task.id}" }) { index, task ->
-                val baseItemModifier = if (draggingTaskId == task.id) {
+                val previewShift by animateFloatAsState(
+                    targetValue = previewShiftFor(TaskSize.BIG, index, task.id),
+                    animationSpec = tween(durationMillis = 120),
+                    label = "big-preview-${task.id}"
+                )
+                val baseItemModifier = (if (draggingTaskId == task.id) {
                     Modifier.zIndex(10f)
                 } else {
                     Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 170))
-                }
+                }).graphicsLayer { translationY = previewShift }
                 val itemModifier = baseItemModifier.onGloballyPositioned { coordinates ->
                     taskCardBounds[task.id] = coordinates.boundsInRoot()
                     if (index == 0 && draggingTaskId != task.id) {
@@ -522,6 +577,10 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     } else null,
                     onMakeBonus = null,
                     dragHint = stringResource(R.string.drag_to_reorder),
+                    dragCompensation = if (draggingTaskId == task.id) dragScrollCompensation else 0f,
+                    onDragMove = { effectiveOffsetY ->
+                        updatePoolDragPreview(task, effectiveOffsetY, index)
+                    },
                     onDragRelease = { offsetY ->
                         val startTop = taskCardBounds[task.id]?.top
                         if (startTop != null) {
@@ -540,7 +599,16 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         }
                     },
                     onDraggingStateChanged = { isDragging ->
-                        draggingTaskId = if (isDragging) task.id else null
+                        if (isDragging) {
+                            draggingTaskId = task.id
+                            draggingTaskSize = TaskSize.BIG
+                            dragOriginalIndex = index
+                            dragPreviewIndex = index
+                            dragScrollCompensation = 0f
+                        } else {
+                            draggingTaskId = null
+                            clearDragPreview()
+                        }
                     }
                 )
             }
@@ -568,12 +636,17 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 }
             }
 
-            itemsIndexed(smallPool, key = { _, task -> "small-${task.id}" }) { _, task ->
-                val baseItemModifier = if (draggingTaskId == task.id) {
+            itemsIndexed(smallPool, key = { _, task -> "small-${task.id}" }) { index, task ->
+                val previewShift by animateFloatAsState(
+                    targetValue = previewShiftFor(TaskSize.SMALL, index, task.id),
+                    animationSpec = tween(durationMillis = 120),
+                    label = "small-preview-${task.id}"
+                )
+                val baseItemModifier = (if (draggingTaskId == task.id) {
                     Modifier.zIndex(10f)
                 } else {
                     Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 170))
-                }
+                }).graphicsLayer { translationY = previewShift }
                 SwipeableTaskRow(
                     modifier = baseItemModifier.onGloballyPositioned { coordinates ->
                         taskCardBounds[task.id] = coordinates.boundsInRoot()
@@ -587,6 +660,10 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         { viewModel.activateBonusFromPool(task.id) }
                     } else null,
                     dragHint = stringResource(R.string.drag_to_reorder),
+                    dragCompensation = if (draggingTaskId == task.id) dragScrollCompensation else 0f,
+                    onDragMove = { effectiveOffsetY ->
+                        updatePoolDragPreview(task, effectiveOffsetY, index)
+                    },
                     onDragRelease = { offsetY ->
                         val startTop = taskCardBounds[task.id]?.top
                         if (startTop != null) {
@@ -594,7 +671,16 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         }
                     },
                     onDraggingStateChanged = { isDragging ->
-                        draggingTaskId = if (isDragging) task.id else null
+                        if (isDragging) {
+                            draggingTaskId = task.id
+                            draggingTaskSize = TaskSize.SMALL
+                            dragOriginalIndex = index
+                            dragPreviewIndex = index
+                            dragScrollCompensation = 0f
+                        } else {
+                            draggingTaskId = null
+                            clearDragPreview()
+                        }
                     }
                 )
             }
