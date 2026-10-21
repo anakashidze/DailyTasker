@@ -195,6 +195,26 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         }
     }
 
+    SideEffect {
+        val activeIds = buildSet {
+            displayedMandatory?.let { add(it.id) }
+            bonusTasks.forEach { add(it.id) }
+            overdueTasks.forEach { add(it.id) }
+            displayPool.forEach { add(it.id) }
+        }
+        taskCardBounds.keys.retainAll(activeIds)
+    }
+
+    fun poolInsertionIndexForTop(taskSize: TaskSize, draggedTaskId: Long?, draggedTopPx: Float): Int {
+        val candidates = localPool.filter { it.taskSize == taskSize && it.id != draggedTaskId }
+        var index = 0
+        for (candidate in candidates) {
+            val top = taskCardBounds[candidate.id]?.top ?: continue
+            if (draggedTopPx >= top) index++ else break
+        }
+        return index.coerceIn(0, candidates.size)
+    }
+
     fun updatePoolDragPreview(task: Task, effectiveOffsetY: Float, originalIndex: Int) {
         val bounds = taskCardBounds[task.id] ?: return
         val draggedTop = bounds.top + effectiveOffsetY
@@ -216,26 +236,6 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         dragPreviewIndex = poolInsertionIndexForTop(task.taskSize, task.id, draggedTop)
         dragOriginalIndex = originalIndex
         draggingTaskSize = task.taskSize
-    }
-
-    SideEffect {
-        val activeIds = buildSet {
-            displayedMandatory?.let { add(it.id) }
-            bonusTasks.forEach { add(it.id) }
-            overdueTasks.forEach { add(it.id) }
-            displayPool.forEach { add(it.id) }
-        }
-        taskCardBounds.keys.retainAll(activeIds)
-    }
-
-    fun poolInsertionIndexForTop(taskSize: TaskSize, draggedTaskId: Long?, draggedTopPx: Float): Int {
-        val candidates = localPool.filter { it.taskSize == taskSize && it.id != draggedTaskId }
-        var index = 0
-        for (candidate in candidates) {
-            val top = taskCardBounds[candidate.id]?.top ?: continue
-            if (draggedTopPx >= top) index++ else break
-        }
-        return index.coerceIn(0, candidates.size)
     }
 
     fun reorderPoolOnRelease(task: Task, draggedTopPx: Float) {
