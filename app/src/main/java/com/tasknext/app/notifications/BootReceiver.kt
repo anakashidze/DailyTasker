@@ -29,6 +29,10 @@ class BootReceiver : BroadcastReceiver() {
                         NotificationScheduler.cancel(context, task.id)
                     }
                 }
+                val todayTask = tasks.firstOrNull {
+                    !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
+                }
+                NotificationScheduler.syncDailyReminders(context, settings, todayTask)
             } finally {
                 pendingResult.finish()
             }
