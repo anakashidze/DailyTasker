@@ -8,8 +8,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -50,6 +52,7 @@ import com.tasknext.app.R
 import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
@@ -77,6 +80,13 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var firstBacklogCardTopPx by remember { mutableStateOf<Float?>(null) }
     var backlogHeaderTopPx by remember { mutableStateOf<Float?>(null) }
     val taskCardBounds = remember { mutableMapOf<Long, Rect>() }
+    val listState = rememberLazyListState()
+    var listBounds by remember { mutableStateOf<Rect?>(null) }
+    var dragPreviewIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOriginalIndex by remember { mutableStateOf<Int?>(null) }
+    var draggingTaskSize by remember { mutableStateOf<TaskSize?>(null) }
+    var dragScrollCompensation by remember { mutableFloatStateOf(0f) }
+    var autoScrollJob by remember { mutableStateOf<Job?>(null) }
 
     var pendingTodayTask by remember { mutableStateOf<Task?>(null) }
     var pendingPreviousTodayId by remember { mutableStateOf<Long?>(null) }
@@ -140,6 +150,73 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val smallPool = displayPool.filter { it.taskSize == TaskSize.SMALL }
     val displayedMandatory = pendingTodayTask ?: mandatory
     val todayLocked = viewModel.isTodayLocked()
+    val density = LocalDensity.current
+    val dragSpacingPx = with(density) { 8.dp.toPx() }
+    val edgeZonePx = with(density) { 72.dp.toPx() }
+    val autoScrollStepPx = with(density) { 28.dp.toPx() }
+
+    fun clearDragPreview() {
+        dragPreviewIndex = null
+        dragOriginalIndex = null
+        draggingTaskSize = null
+        dragScrollCompensation = 0f
+        autoScrollJob?.cancel()
+        autoScrollJob = null
+    }
+
+    fun previewShiftFor(taskSize: TaskSize, index: Int, taskId: Long): Float {
+        if (draggingTaskId == null || draggingTaskId == taskId || draggingTaskSize != taskSize) return 0f
+        val target = dragPreviewIndex ?: return 0f
+        val origin = dragOriginalIndex ?: return 0f
+        val extent = (draggingTaskId?.let { taskCardBounds[it]?.height } ?: 0f) + dragSpacingPx
+        if (extent <= dragSpacingPx) return 0f
+
+        return when {
+            origin < 0 -> if (index >= target) extent else 0f
+            target > origin && index in (origin + 1)..target -> -extent
+            target < origin && index in target until origin -> extent
+            else -> 0f
+        }
+    }
+
+    fun maybeAutoScroll(draggedCenterY: Float) {
+        val viewport = listBounds ?: return
+        val direction = when {
+            draggedCenterY < viewport.top + edgeZonePx -> -1f
+            draggedCenterY > viewport.bottom - edgeZonePx -> 1f
+            else -> 0f
+        }
+        if (direction == 0f || autoScrollJob?.isActive == true) return
+
+        autoScrollJob = scope.launch {
+            val consumed = listState.scrollBy(direction * autoScrollStepPx)
+            // Counter the LazyColumn movement so the floating card stays under the finger.
+            dragScrollCompensation += consumed
+        }
+    }
+
+    fun updatePoolDragPreview(task: Task, effectiveOffsetY: Float, originalIndex: Int) {
+        val bounds = taskCardBounds[task.id] ?: return
+        val draggedTop = bounds.top + effectiveOffsetY
+        val center = draggedTop + bounds.height / 2f
+        maybeAutoScroll(center)
+
+        val todayTop = todayCardTopPx
+        if (
+            task.taskSize == TaskSize.BIG &&
+            !todayLocked &&
+            displayedMandatory != null &&
+            todayTop != null &&
+            draggedTop <= todayTop
+        ) {
+            dragPreviewIndex = null
+            return
+        }
+
+        dragPreviewIndex = poolInsertionIndexForTop(task.taskSize, task.id, draggedTop)
+        dragOriginalIndex = originalIndex
+        draggingTaskSize = task.taskSize
+    }
 
     SideEffect {
         val activeIds = buildSet {
@@ -283,9 +360,13 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         }
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
+                .onGloballyPositioned { coordinates ->
+                    listBounds = coordinates.boundsInRoot()
+                }
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -635,6 +716,8 @@ private fun SwipeableTaskRow(
     onMakeToday: (() -> Unit)? = null,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
+    dragCompensation: Float = 0f,
+    onDragMove: ((Float) -> Unit)? = null,
     onDragRelease: ((Float) -> Unit)? = null,
     onDraggingStateChanged: (Boolean) -> Unit = {}
 ) {
@@ -701,6 +784,8 @@ private fun SwipeableTaskRow(
                 onMakeToday = onMakeToday,
                 onMakeBonus = onMakeBonus,
                 dragHint = dragHint,
+                dragCompensation = dragCompensation,
+                onDragMove = onDragMove,
                 onDragRelease = onDragRelease,
                 onDraggingChanged = { isDragging ->
                     rowDragging = isDragging
@@ -719,6 +804,8 @@ private fun TaskRow(
     onMakeToday: (() -> Unit)? = null,
     onMakeBonus: (() -> Unit)? = null,
     dragHint: String? = null,
+    dragCompensation: Float = 0f,
+    onDragMove: ((Float) -> Unit)? = null,
     onDragRelease: ((Float) -> Unit)? = null,
     onDraggingChanged: (Boolean) -> Unit = {}
 ) {
@@ -736,13 +823,15 @@ private fun TaskRow(
     val dragElevationPx = with(density) { 10.dp.toPx() }
     var dragOffset by remember(task.id) { mutableFloatStateOf(0f) }
     var dragging by remember(task.id) { mutableStateOf(false) }
+    val currentOnDragMove by rememberUpdatedState(onDragMove)
     val currentOnDragRelease by rememberUpdatedState(onDragRelease)
+    val currentDragCompensation by rememberUpdatedState(dragCompensation)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer(
-                translationY = if (dragging) dragOffset else 0f,
+                translationY = if (dragging) dragOffset + currentDragCompensation else 0f,
                 scaleX = if (dragging) 1.018f else 1f,
                 scaleY = if (dragging) 1.018f else 1f,
                 shadowElevation = if (dragging) dragElevationPx else 0f,
@@ -769,7 +858,7 @@ private fun TaskRow(
                                 onDraggingChanged(false)
                             },
                             onDragEnd = {
-                                val finalOffset = dragOffset
+                                val finalOffset = dragOffset + currentDragCompensation
                                 currentOnDragRelease?.invoke(finalOffset)
                                 dragging = false
                                 dragOffset = 0f
@@ -780,6 +869,7 @@ private fun TaskRow(
                             // The card itself follows the finger continuously. No task
                             // membership or list order is mutated until onDragEnd.
                             dragOffset += dragAmount.y
+                            currentOnDragMove?.invoke(dragOffset + currentDragCompensation)
                         }
                     }
                 } else {
