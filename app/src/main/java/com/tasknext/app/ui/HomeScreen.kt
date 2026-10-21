@@ -83,8 +83,8 @@ fun HomeScreen(
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val directionLockPx = with(density) { 10.dp.toPx() }
-    val swipeThresholdPx = with(density) { 36.dp.toPx() }
+    val directionLockPx = with(density) { 8.dp.toPx() }
+    val swipeThresholdPx = with(density) { 28.dp.toPx() }
     val pullToAddThresholdPx = with(density) { 84.dp.toPx() }
     val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
     val pullProgress = (pullOffset / pullToAddThresholdPx).coerceIn(0f, 1f)
@@ -172,10 +172,10 @@ fun HomeScreen(
 
                                 if (gesture == null) {
                                     val horizontalEnough = abs(totalX) >= directionLockPx &&
-                                        abs(totalX) > abs(totalY) * 1.12f
+                                        abs(totalX) > abs(totalY) * 1.05f
                                     val downwardEnough = currentPage == HubPage.HOME &&
                                         totalY >= directionLockPx &&
-                                        abs(totalY) > abs(totalX) * 1.12f
+                                        abs(totalY) > abs(totalX) * 1.08f
 
                                     if (horizontalEnough) {
                                         val target = targetForHorizontal(totalX)
