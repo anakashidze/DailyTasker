@@ -71,6 +71,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val taskGroups by viewModel.taskGroups.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Task?>(null) }
+    var backdateTask by remember { mutableStateOf<Task?>(null) }
     var draggingTaskId by remember { mutableStateOf<Long?>(null) }
     var todayCardTopPx by remember { mutableStateOf<Float?>(null) }
     var firstBacklogCardTopPx by remember { mutableStateOf<Float?>(null) }
@@ -300,7 +301,14 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         tag = stringResource(R.string.overdue_upper),
                         onEdit = { editing = task },
                         onDelete = { deleteWithUndo(task) },
-                        onComplete = { completeWithUndo(task) }
+                        onComplete = {
+                            val yesterday = LocalDate.now().minusDays(1).toEpochDay()
+                            if (task.overdueSinceEpochDay == yesterday) {
+                                backdateTask = task
+                            } else {
+                                completeWithUndo(task)
+                            }
+                        }
                     )
                 }
                 item { Spacer(Modifier.height(6.dp)) }
@@ -562,6 +570,34 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     )
                 )
                 editing = null
+            }
+        )
+    }
+
+    backdateTask?.let { task ->
+        AlertDialog(
+            onDismissRequest = { backdateTask = null },
+            title = { Text(stringResource(R.string.complete_overdue_title)) },
+            text = { Text(stringResource(R.string.complete_overdue_question)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.completeOverdue(task.id, completedYesterday = true)
+                        backdateTask = null
+                    }
+                ) {
+                    Text(stringResource(R.string.completed_yesterday))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.completeOverdue(task.id, completedYesterday = false)
+                        backdateTask = null
+                    }
+                ) {
+                    Text(stringResource(R.string.complete_today))
+                }
             }
         )
     }
