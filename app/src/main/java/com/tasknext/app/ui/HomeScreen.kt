@@ -283,13 +283,13 @@ fun HomeScreen(
             onAddGroup = { viewModel.addCustomGroup(it) },
             onRemoveGroup = { viewModel.removeCustomGroup(it) },
             onDismiss = { showAdd = false },
-            onSave = { title, group, priority, comment, remOn, h, m ->
+            onSave = { title, group, taskSize, comment, remOn, h, m ->
                 viewModel.addTask(
                     title = title,
                     colorHex = group.colorHex,
                     groupName = group.name,
                     groupIcon = group.iconKey,
-                    priority = priority,
+                    taskSize = taskSize,
                     comment = comment,
                     reminderEnabled = remOn,
                     hour = h,
