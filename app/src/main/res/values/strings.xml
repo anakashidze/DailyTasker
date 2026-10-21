@@ -81,4 +81,5 @@
     <string name="complete">Complete</string>
     <string name="delete">Delete</string>
     <string name="comment">Comment</string>
+    <string name="locked_upper">LOCKED</string>
 </resources>
