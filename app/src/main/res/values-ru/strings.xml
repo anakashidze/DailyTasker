@@ -86,4 +86,5 @@
     <string name="widget_day_complete">ДЕНЬ ВЫПОЛНЕН</string>
     <string name="widget_all_done">Главная задача на сегодня выполнена</string>
     <string name="widget_no_task_selected">Большая задача не выбрана</string>
+    <string name="today_selection_closed">Задача на сегодня не была выбрана до времени фиксации. Окно выбора закрыто.</string>
 </resources>
