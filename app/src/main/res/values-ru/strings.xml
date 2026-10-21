@@ -57,4 +57,11 @@
     <string name="clear_history">Очистить историю</string>
     <string name="clear_history_question">Очистить историю?</string>
     <string name="clear_history_description">Записи истории будут удалены. Активные задачи и данные серии не изменятся.</string>
+    <string name="nothing_set_today">Задача на сегодня не выбрана.\nВыберите большую задачу из списка следующих задач.</string>
+    <string name="pull_to_add_task">Потяните вниз, чтобы добавить задачу</string>
+    <string name="release_to_add_task">Отпустите, чтобы добавить задачу</string>
+    <string name="done">Готово</string>
+    <string name="tap_when_done">нажмите после выполнения</string>
+    <string name="day_complete">День выполнен</string>
+    <string name="day_complete_description">Большая задача на сегодня выполнена.</string>
 </resources>
