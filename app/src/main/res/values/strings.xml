@@ -64,4 +64,11 @@
     <string name="tap_when_done">tap when it&apos;s done</string>
     <string name="day_complete">Day complete</string>
     <string name="day_complete_description">Your Big task is done for today.</string>
+    <string name="new_group">New group</string>
+    <string name="group_name">Group name</string>
+    <string name="icon">Icon</string>
+    <string name="color">Color</string>
+    <string name="add_new_group">Add new group</string>
+    <string name="select_time">Select time</string>
+    <string name="ok">OK</string>
 </resources>
