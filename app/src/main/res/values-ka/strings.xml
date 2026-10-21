@@ -86,4 +86,5 @@
     <string name="widget_day_complete">დღე შესრულებულია</string>
     <string name="widget_all_done">დღევანდელი მთავარი დავალება შესრულებულია</string>
     <string name="widget_no_task_selected">დიდი დავალება არჩეული არაა</string>
+    <string name="today_selection_closed">დღევანდელი დავალება ჩაკეტვის დრომდე არ აგირჩევიათ. არჩევის დრო დასრულებულია.</string>
 </resources>
