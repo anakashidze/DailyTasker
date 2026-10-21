@@ -54,6 +54,12 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val _streakCount = MutableStateFlow(repo.currentStreakCount())
     val streakCount: StateFlow<Int> = _streakCount
 
+    private val _restCredits = MutableStateFlow(0)
+    val restCredits: StateFlow<Int> = _restCredits
+
+    private val _restToday = MutableStateFlow(false)
+    val restToday: StateFlow<Boolean> = _restToday
+
     private val _showTomorrowPicker = MutableStateFlow(false)
     val showTomorrowPicker: StateFlow<Boolean> = _showTomorrowPicker
 
@@ -68,6 +74,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repo.rolloverDayIfNeeded()
         _dayComplete.value = repo.isDayComplete()
         _streakCount.value = repo.currentStreakCount()
+        _restCredits.value = repo.availableRestCredits()
+        _restToday.value = repo.isRestToday()
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         syncReminderAlarms()
         refreshTodayWidget()
@@ -161,6 +169,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repo.getTask(task.id)?.let { syncTaskReminder(it) }
         _dayComplete.value = repo.isDayComplete()
         _streakCount.value = repo.currentStreakCount()
+        _restCredits.value = repo.availableRestCredits()
+        _restToday.value = repo.isRestToday()
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         _showTomorrowPicker.value = false
         refreshTodayWidget()
@@ -225,6 +235,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             _showTomorrowPicker.value = false
         }
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        _restCredits.value = repo.availableRestCredits()
         refreshTodayWidget()
     }
 
@@ -235,12 +246,39 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         _streakCount.value = repo.currentStreakCount()
         _showTomorrowPicker.value = false
         _queuedTomorrowTaskId.value = -1L
+        _restCredits.value = repo.availableRestCredits()
+        _restToday.value = false
         refreshTodayWidget()
     }
 
     fun completeBonus(taskId: Long) = viewModelScope.launch {
         NotificationScheduler.cancel(getApplication(), taskId)
         repo.completeBonus(taskId)
+        _restCredits.value = repo.availableRestCredits()
+        refreshTodayWidget()
+    }
+
+    fun completeOverdue(taskId: Long, completedYesterday: Boolean) = viewModelScope.launch {
+        NotificationScheduler.cancel(getApplication(), taskId)
+        repo.completeOverdue(taskId, completedYesterday)
+        _streakCount.value = repo.currentStreakCount()
+        _restCredits.value = repo.availableRestCredits()
+        refreshTodayWidget()
+    }
+
+    fun useRestCreditToday() = viewModelScope.launch {
+        if (repo.useRestCreditToday()) {
+            _dayComplete.value = true
+            _restToday.value = true
+            _restCredits.value = repo.availableRestCredits()
+            _streakCount.value = repo.currentStreakCount()
+            refreshTodayWidget()
+        }
+    }
+
+    fun recoverHistoryRecord(logId: Long) = viewModelScope.launch {
+        repo.recoverHistoryRecord(logId)
+        _restCredits.value = repo.availableRestCredits()
         refreshTodayWidget()
     }
 
