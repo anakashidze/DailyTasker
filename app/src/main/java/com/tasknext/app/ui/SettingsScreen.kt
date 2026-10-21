@@ -411,8 +411,7 @@ private fun CompactSnoozeRow(
             singleLine = true,
             textStyle = MaterialTheme.typography.labelMedium,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.width(78.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            modifier = Modifier.width(78.dp)
         )
     }
 }
