@@ -57,4 +57,11 @@
     <string name="clear_history">ისტორიის გასუფთავება</string>
     <string name="clear_history_question">გავასუფთავოთ ისტორია?</string>
     <string name="clear_history_description">წაიშლება ისტორიის ჩანაწერები. აქტიური დავალებები და სერიის მონაცემები არ შეიცვლება.</string>
+    <string name="nothing_set_today">დღეს მთავარი დავალება არჩეული არაა.\nაირჩიეთ დიდი დავალება შემდეგი დავალებებიდან.</string>
+    <string name="pull_to_add_task">ჩამოსწიეთ დავალების დასამატებლად</string>
+    <string name="release_to_add_task">გაუშვით დასამატებლად</string>
+    <string name="done">შესრულება</string>
+    <string name="tap_when_done">დააჭირეთ შესრულების შემდეგ</string>
+    <string name="day_complete">დღე შესრულებულია</string>
+    <string name="day_complete_description">დღევანდელი დიდი დავალება შესრულებულია.</string>
 </resources>
