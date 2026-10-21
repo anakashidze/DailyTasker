@@ -86,4 +86,5 @@
     <string name="widget_day_complete">DAY COMPLETE</string>
     <string name="widget_all_done">All done for today</string>
     <string name="widget_no_task_selected">No Big task selected</string>
+    <string name="today_selection_closed">Today was not selected before the lock time. The selection window is closed.</string>
 </resources>
