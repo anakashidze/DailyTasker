@@ -107,4 +107,5 @@
     <string name="notification_streak_title">Серия под угрозой</string>
     <string name="notification_streak_body">Ваша серия из %1$d дней ещё не защищена. Выполните задачу на сегодня или используйте кредит отдыха.</string>
     <string name="notification_today_open_body">Сегодняшний день ещё не закрыт. Выполните большую задачу или используйте кредит отдыха.</string>
+    <string name="widget_overdue_count">Просроченных задач: %1$d</string>
 </resources>
