@@ -1,5 +1,60 @@
 <resources>
     <string name="app_name">TaskNext</string>
     <string name="today_widget_description">Shows your current TaskNext Today task</string>
-</resources>
+    <string name="back">Back</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_daily_planning">Daily planning</string>
+    <string name="today_lock_time">Today lock time</string>
+    <string name="today_lock_description">Choose Today before this time. After the lock, Today cannot be replaced, moved out, deleted, or edited. Latest allowed time is 12:00.</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="notifications_enabled">Notifications enabled</string>
+    <string name="default_reminder_time">Default task reminder</string>
+    <string name="default_reminder_description">Tasks using the default reminder follow this time.</string>
+    <string name="snooze_duration">Snooze duration (minutes)</string>
+    <string name="plan_tomorrow_reminder">Plan tomorrow reminder</string>
+    <string name="streak_risk_reminder">Streak-risk reminder</string>
+    <string name="settings_appearance_language">Appearance &amp; language</string>
+    <string name="dark_theme">Dark theme</string>
+    <string name="group_history_by_day">Group history by day</string>
+    <string name="language">Language</string>
+    <string name="language_restart_note">Changing language reloads TaskNext. New interface text will use this language automatically.</string>
 
+    <string name="streak">Streak</string>
+    <string name="day_count">%1$d day</string>
+    <string name="days_count">%1$d days</string>
+    <string name="history">History</string>
+    <string name="tasks">Tasks</string>
+    <string name="today">Today</string>
+    <string name="today_upper">TODAY</string>
+    <string name="bonus_today">Bonus today</string>
+    <string name="bonus_upper">BONUS</string>
+    <string name="overdue">Overdue</string>
+    <string name="overdue_upper">OVERDUE</string>
+    <string name="next_tasks">Next tasks</string>
+    <string name="bonus_backlog">Bonus backlog</string>
+    <string name="tomorrow_upper">TOMORROW</string>
+    <string name="day_after_upper">DAY AFTER</string>
+    <string name="task_size">Task size</string>
+    <string name="task_size_big">Big</string>
+    <string name="task_size_small">Small</string>
+    <string name="make_today">Make Today</string>
+    <string name="make_bonus_today">Make bonus today</string>
+    <string name="today_locked">Today is locked</string>
+
+    <string name="add_task">Add task</string>
+    <string name="edit_task">Edit task</string>
+    <string name="title">Title</string>
+    <string name="group">Group</string>
+    <string name="comment_optional">Comment (optional)</string>
+    <string name="remind_me">Remind me</string>
+    <string name="add">Add</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
+    <string name="clear">Clear</string>
+    <string name="completed">Completed</string>
+    <string name="no_history">No task history yet.</string>
+    <string name="clear_history">Clear history</string>
+    <string name="clear_history_question">Clear history?</string>
+    <string name="clear_history_description">This removes History records. Your active tasks and streak ledger are not affected.</string>
+</resources>
