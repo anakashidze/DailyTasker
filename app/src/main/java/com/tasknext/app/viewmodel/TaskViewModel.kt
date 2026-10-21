@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tasknext.app.data.AppDatabase
-import com.tasknext.app.data.Priority
+import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.SettingsStore
 import com.tasknext.app.data.Task
 import com.tasknext.app.data.TaskGroupDefinition
@@ -78,7 +78,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         colorHex: String,
         groupName: String,
         groupIcon: String,
-        priority: Priority,
+        taskSize: TaskSize,
         comment: String,
         reminderEnabled: Boolean,
         hour: Int?,
@@ -90,7 +90,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 colorHex = colorHex,
                 groupName = groupName,
                 groupIcon = groupIcon,
-                priority = priority,
+                taskSize = taskSize,
                 comment = comment,
                 reminderEnabled = reminderEnabled,
                 reminderHour = hour,
