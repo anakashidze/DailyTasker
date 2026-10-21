@@ -71,4 +71,13 @@
     <string name="add_new_group">Добавить новую группу</string>
     <string name="select_time">Выберите время</string>
     <string name="ok">ОК</string>
+    <string name="next_tasks_description">Большие задачи следуют расписанию справа. При перестановке задач даты остаются привязаны к позициям.</string>
+    <string name="no_big_tasks">Нет запланированных больших задач.</string>
+    <string name="bonus_backlog_description">Маленькие задачи хранятся здесь. Нажмите звезду, чтобы добавить задачу в бонусы на сегодня.</string>
+    <string name="no_small_tasks">Нет маленьких задач в бонусном списке.</string>
+    <string name="drag_to_next_tasks">Удерживайте и перетащите в следующие задачи</string>
+    <string name="drag_to_bonus_backlog">Удерживайте и перетащите в бонусный список</string>
+    <string name="drag_to_reorder">Удерживайте и перетащите для изменения порядка</string>
+    <string name="complete">Выполнить</string>
+    <string name="delete">Удалить</string>
 </resources>
