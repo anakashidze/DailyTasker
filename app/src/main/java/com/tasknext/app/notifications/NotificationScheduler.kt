@@ -8,11 +8,17 @@ import android.os.Build
 import com.tasknext.app.data.SettingsStore
 import com.tasknext.app.data.Task
 import java.util.Calendar
+import kotlin.math.max
 
 object NotificationScheduler {
 
     const val ACTION_REMINDER = "com.tasknext.app.action.REMINDER"
     const val ACTION_SNOOZE_ALARM = "com.tasknext.app.action.SNOOZE_ALARM"
+    const val ACTION_PLAN_TOMORROW = "com.tasknext.app.action.PLAN_TOMORROW"
+    const val ACTION_STREAK_RISK = "com.tasknext.app.action.STREAK_RISK"
+
+    private const val PLAN_REQUEST_CODE = 9101
+    private const val STREAK_REQUEST_CODE = 9102
 
     fun schedule(context: Context, task: Task, defaultHour: Int, defaultMinute: Int) {
         val settings = SettingsStore(context)
@@ -23,7 +29,7 @@ object NotificationScheduler {
 
         val hour = task.reminderHour ?: defaultHour
         val minute = task.reminderMinute ?: defaultMinute
-        scheduleAt(
+        scheduleTaskAt(
             context = context,
             taskId = task.id,
             title = task.title,
@@ -34,7 +40,7 @@ object NotificationScheduler {
 
     fun scheduleSnooze(context: Context, taskId: Long, title: String, minutes: Int) {
         val safeMinutes = minutes.coerceIn(1, 24 * 60)
-        scheduleAt(
+        scheduleTaskAt(
             context = context,
             taskId = taskId,
             title = title,
@@ -43,10 +49,75 @@ object NotificationScheduler {
         )
     }
 
+    fun syncDailyReminders(
+        context: Context,
+        settings: SettingsStore,
+        todayTask: Task?
+    ) {
+        if (!settings.notificationsEnabled) {
+            cancelDailyReminders(context)
+            return
+        }
+
+        if (settings.planTomorrowReminderEnabled) {
+            scheduleDailyAction(
+                context = context,
+                action = ACTION_PLAN_TOMORROW,
+                requestCode = PLAN_REQUEST_CODE,
+                triggerAtMillis = nextOccurrence(
+                    settings.planTomorrowReminderHour,
+                    settings.planTomorrowReminderMinute
+                )
+            )
+        } else {
+            cancelDailyAction(context, ACTION_PLAN_TOMORROW, PLAN_REQUEST_CODE)
+        }
+
+        if (settings.streakRiskReminderEnabled) {
+            val preferredMinutes =
+                settings.streakRiskReminderHour * 60 + settings.streakRiskReminderMinute
+
+            val taskReminderMinutes = if (todayTask?.reminderEnabled == true) {
+                val hour = todayTask.reminderHour ?: settings.defaultReminderHour
+                val minute = todayTask.reminderMinute ?: settings.defaultReminderMinute
+                hour.coerceIn(0, 23) * 60 + minute.coerceIn(0, 59)
+            } else {
+                -1
+            }
+
+            val effectiveMinutes = max(
+                preferredMinutes,
+                if (taskReminderMinutes >= 0) taskReminderMinutes + 15 else preferredMinutes
+            ).coerceAtMost(23 * 60 + 59)
+
+            scheduleDailyAction(
+                context = context,
+                action = ACTION_STREAK_RISK,
+                requestCode = STREAK_REQUEST_CODE,
+                triggerAtMillis = nextOccurrence(
+                    effectiveMinutes / 60,
+                    effectiveMinutes % 60
+                )
+            )
+        } else {
+            cancelDailyAction(context, ACTION_STREAK_RISK, STREAK_REQUEST_CODE)
+        }
+    }
+
     fun cancel(context: Context, taskId: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarmManager.cancel(pendingIntent(context, taskId, ACTION_REMINDER))
-        alarmManager.cancel(pendingIntent(context, taskId, ACTION_SNOOZE_ALARM))
+        alarmManager.cancel(taskPendingIntent(context, taskId, ACTION_REMINDER))
+        alarmManager.cancel(taskPendingIntent(context, taskId, ACTION_SNOOZE_ALARM))
+    }
+
+    fun cancelDailyReminders(context: Context) {
+        cancelDailyAction(context, ACTION_PLAN_TOMORROW, PLAN_REQUEST_CODE)
+        cancelDailyAction(context, ACTION_STREAK_RISK, STREAK_REQUEST_CODE)
+    }
+
+    private fun cancelDailyAction(context: Context, action: String, requestCode: Int) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.cancel(dailyPendingIntent(context, action, requestCode))
     }
 
     private fun nextOccurrence(hour: Int, minute: Int): Long {
@@ -60,30 +131,63 @@ object NotificationScheduler {
         }.timeInMillis
     }
 
-    private fun scheduleAt(
+    private fun scheduleTaskAt(
         context: Context,
         taskId: Long,
         title: String,
         triggerAtMillis: Long,
         action: String
     ) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val pi = pendingIntent(context, taskId, action, title)
+        scheduleAlarm(
+            context,
+            triggerAtMillis,
+            taskPendingIntent(context, taskId, action, title)
+        )
+    }
 
-        // Exact-alarm access is commonly denied by default on modern Android.
-        // Use it when granted, otherwise degrade gracefully to an inexact idle-safe alarm.
+    private fun scheduleDailyAction(
+        context: Context,
+        action: String,
+        requestCode: Int,
+        triggerAtMillis: Long
+    ) {
+        scheduleAlarm(
+            context,
+            triggerAtMillis,
+            dailyPendingIntent(context, action, requestCode)
+        )
+    }
+
+    private fun scheduleAlarm(
+        context: Context,
+        triggerAtMillis: Long,
+        pendingIntent: PendingIntent
+    ) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
             } else {
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
             }
         } catch (_: SecurityException) {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
         }
     }
 
-    private fun pendingIntent(
+    private fun taskPendingIntent(
         context: Context,
         taskId: Long,
         action: String,
@@ -97,6 +201,22 @@ object NotificationScheduler {
         return PendingIntent.getBroadcast(
             context,
             taskId.toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun dailyPendingIntent(
+        context: Context,
+        action: String,
+        requestCode: Int
+    ): PendingIntent {
+        val intent = Intent(context, DailyPlanningReceiver::class.java).apply {
+            this.action = action
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
