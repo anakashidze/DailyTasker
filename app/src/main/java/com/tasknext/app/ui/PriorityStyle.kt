@@ -17,11 +17,11 @@ internal fun priorityPalette(priority: Priority): PriorityPalette = when (priori
 
 internal fun taskSizePalette(taskSize: TaskSize): PriorityPalette = when (taskSize) {
     TaskSize.BIG -> PriorityPalette(
-        container = Color(0xFFEDE9FE),
-        content = Color(0xFF5B21B6)
+        container = Color(0xFFEDE9FE), // violet 100
+        content = Color(0xFF6D28D9)   // violet 700
     )
     TaskSize.SMALL -> PriorityPalette(
-        container = Color(0xFFE0F2FE),
-        content = Color(0xFF0369A1)
+        container = Color(0xFFEEF2FF), // indigo 50
+        content = Color(0xFF4F46E5)    // indigo 600
     )
 }
