@@ -82,4 +82,8 @@
     <string name="delete">Delete</string>
     <string name="comment">Comment</string>
     <string name="locked_upper">LOCKED</string>
+    <string name="widget_today_group">TODAY • %1$s</string>
+    <string name="widget_day_complete">DAY COMPLETE</string>
+    <string name="widget_all_done">All done for today</string>
+    <string name="widget_no_task_selected">No Big task selected</string>
 </resources>
