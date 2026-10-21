@@ -80,4 +80,5 @@
     <string name="drag_to_reorder">Long-press and drag; release to reorder</string>
     <string name="complete">Complete</string>
     <string name="delete">Delete</string>
+    <string name="comment">Comment</string>
 </resources>
