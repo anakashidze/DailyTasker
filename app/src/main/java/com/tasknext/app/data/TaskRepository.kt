@@ -10,28 +10,36 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     fun observePool(): Flow<List<Task>> = dao.observePool()
     fun observeOverdue(): Flow<List<Task>> = dao.observeOverdue()
     fun observeHistory(): Flow<List<CompletionLog>> = dao.observeHistory()
+    fun observeDailyOutcomes(): Flow<List<DailyOutcome>> = dao.observeDailyOutcomes()
 
     suspend fun deleteHistoryRecord(id: Long) = dao.deleteHistoryRecord(id)
     suspend fun clearHistory() = dao.clearHistory()
 
     private fun todayEpochDay(): Long = LocalDate.now().toEpochDay()
 
+    private suspend fun seedOutcomeLedgerFromLegacyStreakIfNeeded() {
+        if (dao.getDailyOutcomesOnce().isNotEmpty()) return
+        val last = settings.streakLastCompletedEpochDay
+        val count = settings.streakCount
+        if (last < 0L || count <= 0) return
+        repeat(count) { offset ->
+            dao.upsertDailyOutcome(
+                DailyOutcome(
+                    epochDay = last - offset,
+                    status = DailyOutcomeStatus.COMPLETED
+                )
+            )
+        }
+    }
+
     suspend fun addTask(task: Task): Long {
         val existing = dao.getAllOnce()
         val nextOrder = (existing.maxOfOrNull { it.orderIndex } ?: -1) + 1
-        val id = dao.insert(task.copy(orderIndex = nextOrder))
-
-        // Do not silently create a new "today" task after the day was already completed.
-        if (!isDayComplete() && existing.none { it.slot == 0 }) {
-            dao.getById(id)?.let { dao.update(it.copy(slot = 0)) }
-        }
-        return id
+        return dao.insert(task.copy(orderIndex = nextOrder, slot = null))
     }
 
     suspend fun getTask(id: Long): Task? = dao.getById(id)
-
     suspend fun getAllTasksOnce(): List<Task> = dao.getAllOnce()
-
     suspend fun updateTask(task: Task) = dao.update(task)
 
     suspend fun reassignRemovedGroup(removedGroupName: String, defaultGroup: TaskGroupDefinition) {
@@ -50,7 +58,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         dao.delete(id)
     }
 
-    /** Reinsert a task deleted by a swipe Undo, preserving its original id/state. */
     suspend fun restoreDeletedTask(task: Task, previousQueuedTomorrowTaskId: Long) {
         dao.insert(task)
         if (previousQueuedTomorrowTaskId == task.id) {
@@ -58,10 +65,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         }
     }
 
-    /**
-     * Reverse the latest completion: restore the original active task, remove only
-     * the History row created by that completion, and restore day/tomorrow state.
-     */
     suspend fun undoCompletion(
         task: Task,
         previousQueuedTomorrowTaskId: Long,
@@ -70,6 +73,9 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         previousStreakLastCompletedEpochDay: Long
     ) {
         dao.undoCompletion(task)
+        if (task.slot == 0) {
+            dao.deleteDailyOutcome(todayEpochDay())
+        }
         settings.queuedTomorrowTaskId = previousQueuedTomorrowTaskId
         settings.dayCompletedEpochDay = previousDayCompletedEpochDay
         settings.streakCount = previousStreakCount
@@ -82,14 +88,10 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
                 dao.update(it.copy(orderIndex = index))
             }
         }
-        // An explicitly selected tomorrow task follows the task itself, not its visual position.
     }
 
-    /** Pulls a bonus (non-mandatory) task from the pool into slot 1 or 2. */
     suspend fun activateBonusTask(taskId: Long) {
-        // A task explicitly reserved for tomorrow should not also become a bonus task today.
         if (settings.queuedTomorrowTaskId == taskId) return
-
         val usedSlots = dao.getAllOnce().mapNotNull { it.slot }
         val freeSlot = listOf(1, 2).firstOrNull { it !in usedSlots } ?: return
         val task = dao.getById(taskId) ?: return
@@ -97,11 +99,8 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         dao.update(task.copy(slot = freeSlot, overdueSinceEpochDay = null))
     }
 
-    /**
-     * Call when the app opens/resumes. If the local calendar day changed,
-     * clear yesterday's completion state and promote an explicitly queued task.
-     */
     suspend fun rolloverDayIfNeeded() {
+        seedOutcomeLedgerFromLegacyStreakIfNeeded()
         val today = todayEpochDay()
         if (settings.lastActiveEpochDay == today) return
 
@@ -109,7 +108,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         val previousDayWasCompleted = previousActiveDay != -1L &&
             settings.dayCompletedEpochDay == previousActiveDay
 
-        // A streak is broken only after at least one full local day was missed.
         if (settings.streakLastCompletedEpochDay < today - 1L) {
             settings.streakCount = 0
         }
@@ -119,7 +117,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
         }
 
-        // Yesterday's unfinished mandatory task becomes a separate Overdue item.
         if (previousToday != null && !previousDayWasCompleted && previousActiveDay != -1L) {
             dao.update(
                 previousToday.copy(
@@ -130,9 +127,14 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             )
         }
 
+        if (previousActiveDay != -1L && !previousDayWasCompleted && dao.getDailyOutcome(previousActiveDay) == null) {
+            dao.upsertDailyOutcome(
+                DailyOutcome(epochDay = previousActiveDay, status = DailyOutcomeStatus.MISSED)
+            )
+        }
+
         settings.dayCompletedEpochDay = -1L
         val queuedId = settings.queuedTomorrowTaskId
-
         val freshAll = dao.getAllOnce()
         val queued = if (queuedId != -1L) {
             freshAll.firstOrNull {
@@ -140,13 +142,9 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             }
         } else null
 
-        val nextToday = queued ?: freshAll
-            .asSequence()
-            .filter { !it.isArchived && it.slot == null && it.overdueSinceEpochDay == null }
-            .minByOrNull { it.orderIndex }
+        val nextToday = queued
 
         if (nextToday != null) {
-            // Clear any stale mandatory slot first, then promote exactly one task.
             dao.getAllOnce()
                 .filter { !it.isArchived && it.slot == 0 && it.id != nextToday.id }
                 .forEach { task -> dao.update(task.copy(slot = null)) }
@@ -157,10 +155,17 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         settings.lastActiveEpochDay = today
     }
 
-    private fun recordTodayStreakCompletion() {
+    private suspend fun recordTodayStreakCompletion(taskId: Long) {
         val today = todayEpochDay()
+        dao.upsertDailyOutcome(
+            DailyOutcome(
+                epochDay = today,
+                status = DailyOutcomeStatus.COMPLETED,
+                sourceTaskId = taskId
+            )
+        )
         when (settings.streakLastCompletedEpochDay) {
-            today -> Unit // already counted today
+            today -> Unit
             today - 1L -> settings.streakCount = settings.streakCount + 1
             else -> settings.streakCount = 1
         }
@@ -169,8 +174,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
 
     fun currentStreakCount(): Int {
         val today = todayEpochDay()
-        // When upgrading from an older version on a day that was already completed,
-        // seed the new streak feature with today rather than displaying 0 immediately.
         if (settings.streakLastCompletedEpochDay == -1L &&
             settings.dayCompletedEpochDay == today
         ) {
@@ -182,29 +185,20 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
 
     fun isDayComplete(): Boolean = settings.dayCompletedEpochDay == todayEpochDay()
 
-    /**
-     * Completes the mandatory task. A completed task is terminal: it is logged to
-     * History and archived so it disappears from Today, Bonus and Backlog lists.
-     */
     suspend fun completeMandatory(taskId: Long) {
         val task = dao.getById(taskId) ?: return
         if (task.isArchived) return
         logAndArchiveCompletion(task)
         settings.dayCompletedEpochDay = todayEpochDay()
-        recordTodayStreakCompletion()
+        recordTodayStreakCompletion(task.id)
     }
 
-    /** Completes a bonus task and removes it from every active task list. */
     suspend fun completeBonus(taskId: Long) {
         val task = dao.getById(taskId) ?: return
         if (task.isArchived) return
         logAndArchiveCompletion(task)
     }
 
-    /**
-     * Single completion invariant used by every UI entry point. The Room DAO
-     * writes History and archives the task in one database transaction.
-     */
     private suspend fun logAndArchiveCompletion(task: Task) {
         val log = CompletionLog(
             taskId = task.id,
@@ -214,11 +208,11 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             groupNameSnapshot = task.groupName,
             groupIconSnapshot = task.groupIcon,
             commentSnapshot = task.comment,
+            eventType = HistoryEventType.COMPLETED,
+            effectiveEpochDay = todayEpochDay(),
             completedAtEpochMillis = System.currentTimeMillis()
         )
-
         dao.archiveAsCompleted(task, log)
-
         if (settings.queuedTomorrowTaskId == task.id) {
             settings.queuedTomorrowTaskId = -1L
         }
@@ -229,14 +223,9 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             .asSequence()
             .filter { it.id != task.id }
             .maxOfOrNull { it.orderIndex } ?: -1
-
         dao.update(task.copy(slot = null, orderIndex = maxOrder + 1, overdueSinceEpochDay = null))
     }
 
-    /**
-     * Queues a pool task for tomorrow and makes it the top/next item in the backlog,
-     * keeping the visible queue and the stored tomorrow choice consistent.
-     */
     suspend fun setTomorrowTask(taskId: Long) {
         val selected = dao.getById(taskId) ?: return
         if (selected.slot != null || selected.isArchived || selected.overdueSinceEpochDay != null) return
@@ -252,12 +241,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         settings.queuedTomorrowTaskId = taskId
     }
 
-
-    /**
-     * Swap a backlog task into today's mandatory slot while returning the previous
-     * Today task to the backlog. When the UI supplies the desired backlog order,
-     * persist that exact order so a recently reordered queue cannot snap back.
-     */
     suspend fun replaceMandatoryWith(
         taskId: Long,
         backlogOrderAfterSwap: List<Long>? = null
@@ -285,11 +268,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         settings.dayCompletedEpochDay = -1L
     }
 
-    /**
-     * Move Today's task back into the backlog at the release position. If a backlog
-     * task exists, its current top item becomes Today; the dragged task is inserted
-     * near the finger position among the remaining backlog tasks.
-     */
     suspend fun moveTodayToBacklogAt(taskId: Long, insertionIndex: Int): Long? {
         val all = dao.getAllOnce()
         val today = all.firstOrNull { it.id == taskId } ?: return null
@@ -304,7 +282,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             dao.updateTasks(listOf(today.copy(slot = null, orderIndex = 0, overdueSinceEpochDay = null)))
         } else {
             val remaining = pool.drop(1).toMutableList()
-            // insertionIndex is based on the pool before the top task is promoted.
             val adjustedIndex = (insertionIndex - 1).coerceIn(0, remaining.size)
             remaining.add(adjustedIndex, today.copy(slot = null, overdueSinceEpochDay = null))
 
@@ -328,7 +305,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     suspend fun moveTodayToBacklog(taskId: Long): Long? =
         moveTodayToBacklogAt(taskId, 0)
 
-    /** Move a Bonus task into Backlog at the exact release position. */
     suspend fun moveBonusToBacklogAt(taskId: Long, insertionIndex: Int) {
         val all = dao.getAllOnce()
         val task = all.firstOrNull { it.id == taskId } ?: return
@@ -352,10 +328,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         moveBonusToBacklogAt(taskId, poolSize)
     }
 
-    /**
-     * Convert Today into a Bonus task immediately. The top backlog task becomes Today
-     * when available so the daily mandatory slot remains populated.
-     */
     suspend fun moveTodayToBonus(taskId: Long): Long? {
         val all = dao.getAllOnce()
         val today = all.firstOrNull { it.id == taskId } ?: return null
@@ -386,10 +358,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         return next?.id
     }
 
-    /**
-     * Marks any task complete from the task list without first making a backlog
-     * task Today's task. Completed tasks are removed from all active lists.
-     */
     suspend fun completeFromList(taskId: Long): Int? {
         val task = dao.getById(taskId) ?: return null
         if (task.isArchived) return null
@@ -397,14 +365,13 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         logAndArchiveCompletion(task)
         if (previousSlot == 0) {
             settings.dayCompletedEpochDay = todayEpochDay()
-            recordTodayStreakCompletion()
+            recordTodayStreakCompletion(task.id)
         }
         return previousSlot
     }
 
     fun queuedTomorrowTaskId(): Long = settings.queuedTomorrowTaskId
 
-    /** Suggests the top/next item in the backlog queue. */
     suspend fun suggestNext(): Task? = dao.getAllOnce()
         .asSequence()
         .filter { it.slot == null && !it.isArchived && it.overdueSinceEpochDay == null }
