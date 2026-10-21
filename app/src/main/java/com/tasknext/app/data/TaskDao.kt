@@ -57,12 +57,43 @@ interface TaskDao {
     suspend fun deleteDailyOutcome(epochDay: Long)
 
     @Insert suspend fun insertLog(log: CompletionLog)
+    @Query("SELECT * FROM completion_log WHERE id = :id LIMIT 1")
+    suspend fun getHistoryById(id: Long): CompletionLog?
+    @Query("SELECT COUNT(*) FROM completion_log WHERE eventType = 'RECOVERED' AND recoveredFromLogId = :sourceLogId")
+    suspend fun recoveryCountFor(sourceLogId: Long): Int
     @Query("SELECT * FROM completion_log ORDER BY completedAtEpochMillis DESC")
     fun observeHistory(): Flow<List<CompletionLog>>
     @Query("DELETE FROM completion_log WHERE id = :id")
     suspend fun deleteHistoryRecord(id: Long)
     @Query("DELETE FROM completion_log")
     suspend fun clearHistory()
+
+    @Insert
+    suspend fun insertSmallTaskCompletion(event: SmallTaskCompletion)
+
+    @Query("""
+        SELECT COUNT(*) FROM small_task_completion
+        WHERE epochDay BETWEEN :startEpochDay AND :endEpochDay
+    """)
+    suspend fun countSmallTaskCompletions(startEpochDay: Long, endEpochDay: Long): Int
+
+    @Query("""
+        DELETE FROM small_task_completion
+        WHERE id = (
+            SELECT id FROM small_task_completion
+            WHERE taskId = :taskId
+            ORDER BY completedAtEpochMillis DESC, id DESC
+            LIMIT 1
+        )
+    """)
+    suspend fun deleteLatestSmallTaskCompletionForTask(taskId: Long)
+
+    @Query("""
+        SELECT COUNT(*) FROM daily_outcome
+        WHERE epochDay BETWEEN :startEpochDay AND :endEpochDay
+          AND status = 'REST'
+    """)
+    suspend fun countRestDays(startEpochDay: Long, endEpochDay: Long): Int
     @Query("""
         DELETE FROM completion_log
         WHERE id = (
@@ -77,6 +108,7 @@ interface TaskDao {
     @Transaction
     suspend fun undoCompletion(task: Task) {
         deleteLatestLogForTask(task.id)
+        deleteLatestSmallTaskCompletionForTask(task.id)
         update(task)
     }
 }
