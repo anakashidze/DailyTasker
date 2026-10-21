@@ -101,4 +101,10 @@
     <string name="complete_overdue_question">This task is from yesterday. When was it completed?</string>
     <string name="completed_yesterday">Completed yesterday</string>
     <string name="complete_today">Complete today</string>
+    <string name="notification_planning_channel">Planning reminders</string>
+    <string name="notification_plan_title">Plan tomorrow</string>
+    <string name="notification_plan_body">Add or choose a Big task for Tomorrow.</string>
+    <string name="notification_streak_title">Your streak is at risk</string>
+    <string name="notification_streak_body">Your %1$d-day streak is still open. Complete Today or use a Rest Credit if available.</string>
+    <string name="notification_today_open_body">Today is still open. Complete your Big task or use a Rest Credit if available.</string>
 </resources>
