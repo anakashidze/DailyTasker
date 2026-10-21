@@ -71,6 +71,7 @@ fun HomeScreen(
     val showTomorrowPicker by viewModel.showTomorrowPicker.collectAsState()
     val pool by viewModel.pool.collectAsState()
     val taskGroups by viewModel.taskGroups.collectAsState()
+    val todayLocked = viewModel.isTodayLocked()
 
     var currentPage by remember { mutableStateOf(HubPage.HOME) }
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
@@ -257,6 +258,7 @@ fun HomeScreen(
                         bonusTasks = bonusTasks,
                         dayComplete = dayComplete,
                         streakCount = streakCount,
+                        todayLocked = todayLocked,
                         onCompleteMandatory = { viewModel.completeMandatory(it) },
                         onCompleteBonus = { viewModel.completeBonus(it) },
                         onOpenTasks = { settleToPage(HubPage.TASKS, 0f) },
@@ -319,6 +321,7 @@ private fun HomePageContent(
     bonusTasks: List<Task>,
     dayComplete: Boolean,
     streakCount: Int,
+    todayLocked: Boolean,
     onCompleteMandatory: (Long) -> Unit,
     onCompleteBonus: (Long) -> Unit,
     onOpenTasks: () -> Unit,
@@ -406,7 +409,9 @@ private fun HomePageContent(
                         onDone = { onCompleteMandatory(mandatory.id) }
                     )
                     else -> Text(
-                        stringResource(R.string.nothing_set_today),
+                        stringResource(
+                            if (todayLocked) R.string.today_selection_closed else R.string.nothing_set_today
+                        ),
                         style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
