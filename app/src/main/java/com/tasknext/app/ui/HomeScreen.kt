@@ -44,11 +44,13 @@ import androidx.compose.ui.unit.sp
 import com.tasknext.app.R
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private enum class HubPage(val index: Int) {
     TASKS(0), HOME(1), HISTORY(2)
@@ -79,77 +81,49 @@ fun HomeScreen(
 
     var currentPage by remember { mutableStateOf(HubPage.HOME) }
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
-    var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    // Absolute position avoids rebasing a pixel offset when the settled page changes.
+    var pagePosition by remember { mutableFloatStateOf(HubPage.HOME.index.toFloat()) }
     var pullOffset by remember { mutableFloatStateOf(0f) }
+    var settleJob by remember { mutableStateOf<Job?>(null) }
     var settling by remember { mutableStateOf(false) }
+    var settleGeneration by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val directionLockPx = with(density) { 8.dp.toPx() }
-    val swipeThresholdPx = with(density) { 28.dp.toPx() }
+    val minimumFlingVelocityPx = with(density) { 720.dp.toPx() }
     val pullToAddThresholdPx = with(density) { 84.dp.toPx() }
     val widthPx = screenSize.width.toFloat().coerceAtLeast(1f)
-    val pullProgress = (pullOffset / pullToAddThresholdPx).coerceIn(0f, 1f)
 
-    fun targetForHorizontal(totalX: Float): HubPage? = when (currentPage) {
-        HubPage.HOME -> when {
-            totalX < 0f -> HubPage.HISTORY
-            totalX > 0f -> HubPage.TASKS
-            else -> null
-        }
-        HubPage.HISTORY -> if (totalX > 0f) HubPage.HOME else null
-        HubPage.TASKS -> if (totalX < 0f) HubPage.HOME else null
-    }
-
-    fun settleToPage(
-        target: HubPage,
-        initialOffset: Float = dragOffsetX,
-        initialVelocity: Float = 0f
-    ) {
-        if (settling || target == currentPage) return
+    fun settleToPage(target: HubPage, initialVelocity: Float = 0f) {
+        val generation = ++settleGeneration
+        settleJob?.cancel()
         settling = true
-        scope.launch {
-            val targetOffset = (currentPage.index - target.index) * widthPx
-            animate(
-                initialValue = initialOffset,
-                targetValue = targetOffset,
-                initialVelocity = initialVelocity,
-                animationSpec = spring(
-                    dampingRatio = 0.92f,
-                    stiffness = 520f
-                )
-            ) { value, _ -> dragOffsetX = value }
-            currentPage = target
-            dragOffsetX = 0f
-            settling = false
+        settleJob = scope.launch {
+            try {
+                animate(
+                    initialValue = pagePosition,
+                    targetValue = target.index.toFloat(),
+                    initialVelocity = initialVelocity,
+                    animationSpec = spring(
+                        dampingRatio = 1f,
+                        stiffness = 420f,
+                        visibilityThreshold = 0.5f / widthPx
+                    )
+                ) { value, _ -> pagePosition = value.coerceIn(0f, 2f) }
+                pagePosition = target.index.toFloat()
+                currentPage = target
+            } finally {
+                if (generation == settleGeneration) settling = false
+            }
         }
     }
 
-    fun cancelHorizontal(
-        initialOffset: Float = dragOffsetX,
-        initialVelocity: Float = 0f
-    ) {
-        if (settling) return
-        settling = true
-        scope.launch {
-            animate(
-                initialValue = initialOffset,
-                targetValue = 0f,
-                initialVelocity = initialVelocity,
-                animationSpec = spring(
-                    dampingRatio = 0.94f,
-                    stiffness = 560f
-                )
-            ) { value, _ -> dragOffsetX = value }
-            dragOffsetX = 0f
-            settling = false
-        }
-    }
-
-    BackHandler(enabled = currentPage != HubPage.HOME && !settling) {
-        settleToPage(HubPage.HOME, 0f)
+    // Back can also interrupt a settle; it must not exit while a side page is moving.
+    BackHandler(enabled = currentPage != HubPage.HOME || settling) {
+        settleToPage(HubPage.HOME)
     }
 
     Box(
@@ -157,137 +131,120 @@ fun HomeScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .onSizeChanged { screenSize = it }
-            .then(
-                if (!settling) {
-                    Modifier.pointerInput(
-                        currentPage,
-                        screenSize,
-                        directionLockPx,
-                        swipeThresholdPx,
-                        pullToAddThresholdPx
-                    ) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            var totalX = 0f
-                            var totalY = 0f
-                            var gesture: HubGesture? = null
-                            var horizontalTarget: HubPage? = null
-                            var pullHapticSent = false
-                            val velocityTracker = VelocityTracker()
-                            dragOffsetX = 0f
-                            pullOffset = 0f
+            .pointerInput(screenSize, directionLockPx, minimumFlingVelocityPx, pullToAddThresholdPx) {
+                try {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val interrupted = settling
+                        settleGeneration++
+                        settleJob?.cancel()
+                        settling = false
+                        val startPosition = pagePosition
+                        val startPage = startPosition.roundToInt().coerceIn(0, 2)
+                        var totalX = 0f
+                        var totalY = 0f
+                        var gesture: HubGesture? = null
+                        var pullHapticSent = false
+                        var released = false
+                        val velocityTracker = VelocityTracker().apply {
+                            addPosition(down.uptimeMillis, down.position)
+                        }
+                        pullOffset = 0f
 
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Final)
-                                val change = event.changes.firstOrNull() ?: break
-                                if (!change.pressed) break
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            // Hand off multi-touch and child-owned scrolling/swiping for
+                            // the whole gesture, instead of stealing a later movement.
+                            if (event.changes.any { it.id != down.id && it.pressed }) break
+                            if (gesture == null && change.isConsumed && change.pressed) break
+                            velocityTracker.addPosition(change.uptimeMillis, change.position)
+                            if (!change.pressed) {
+                                released = true
+                                if (gesture != null) change.consume()
+                                break
+                            }
+                            val delta = change.position - change.previousPosition
+                            totalX += delta.x
+                            totalY += delta.y
 
-                                // A task card owns its own horizontal swipe/drag. The page
-                                // gesture only starts when child content has not consumed it.
-                                if (gesture == null && change.isConsumed) continue
-
-                                velocityTracker.addPosition(change.uptimeMillis, change.position)
-                                val delta = change.position - change.previousPosition
-                                totalX += delta.x
-                                totalY += delta.y
-
-                                if (gesture == null) {
-                                    val horizontalEnough = abs(totalX) >= directionLockPx &&
-                                        abs(totalX) > abs(totalY) * 1.05f
-                                    val downwardEnough = currentPage == HubPage.HOME &&
-                                        totalY >= directionLockPx &&
-                                        abs(totalY) > abs(totalX) * 1.08f
-
-                                    if (horizontalEnough) {
-                                        val target = targetForHorizontal(totalX)
-                                        if (target != null) {
-                                            horizontalTarget = target
-                                            gesture = if (totalX < 0f) HubGesture.LEFT else HubGesture.RIGHT
-                                        }
-                                    } else if (downwardEnough) {
-                                        gesture = HubGesture.DOWN
-                                    }
-                                }
-
-                                when (gesture) {
-                                    HubGesture.LEFT, HubGesture.RIGHT -> {
-                                        val target = horizontalTarget
-                                        if (target != null) {
-                                            val targetOffset = (currentPage.index - target.index) * widthPx
-                                            dragOffsetX = if (targetOffset < 0f) {
-                                                totalX.coerceIn(targetOffset, 0f)
-                                            } else {
-                                                totalX.coerceIn(0f, targetOffset)
-                                            }
-                                            change.consume()
-                                        }
-                                    }
-                                    HubGesture.DOWN -> {
-                                        val pulled = totalY.coerceAtLeast(0f)
-                                            .coerceAtMost(pullToAddThresholdPx * 1.18f)
-                                        pullOffset = pulled
-                                        if (pulled >= pullToAddThresholdPx && !pullHapticSent) {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            pullHapticSent = true
-                                        }
-                                        change.consume()
-                                    }
-                                    null -> Unit
+                            if (gesture == null) {
+                                val horizontalEnough = abs(totalX) >= directionLockPx &&
+                                    abs(totalX) > abs(totalY) * 1.05f
+                                val downwardEnough = !interrupted && startPage == HubPage.HOME.index &&
+                                    totalY >= directionLockPx && abs(totalY) > abs(totalX) * 1.08f
+                                if (horizontalEnough) {
+                                    gesture = if (totalX < 0f) HubGesture.LEFT else HubGesture.RIGHT
+                                } else if (downwardEnough) {
+                                    gesture = HubGesture.DOWN
                                 }
                             }
 
                             when (gesture) {
                                 HubGesture.LEFT, HubGesture.RIGHT -> {
-                                    val target = horizontalTarget
-                                    if (target != null) {
-                                        val velocityX = runCatching {
-                                            velocityTracker.calculateVelocity().x
-                                        }.getOrDefault(0f)
-                                        val flingThreshold = 720f * density.density
-                                        val velocityMatchesTarget =
-                                            (target.index > currentPage.index && velocityX < -flingThreshold) ||
-                                            (target.index < currentPage.index && velocityX > flingThreshold)
-                                        val commit =
-                                            abs(dragOffsetX) >= widthPx * 0.24f ||
-                                            velocityMatchesTarget ||
-                                            abs(dragOffsetX) >= swipeThresholdPx
-                                        if (commit) {
-                                            settleToPage(target, dragOffsetX, velocityX)
-                                        } else {
-                                            cancelHorizontal(dragOffsetX, velocityX)
-                                        }
-                                    }
+                                    // Direct state writes only: never launch work per pointer move.
+                                    pagePosition = (startPosition - totalX / widthPx).coerceIn(
+                                        (startPage - 1).coerceAtLeast(0).toFloat(),
+                                        (startPage + 1).coerceAtMost(2).toFloat()
+                                    )
+                                    change.consume()
                                 }
                                 HubGesture.DOWN -> {
-                                    val armed = pullOffset >= pullToAddThresholdPx
-                                    pullOffset = 0f
-                                    if (armed) showAdd = true
+                                    pullOffset = totalY.coerceIn(0f, pullToAddThresholdPx * 1.18f)
+                                    if (pullOffset >= pullToAddThresholdPx && !pullHapticSent) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        pullHapticSent = true
+                                    }
+                                    change.consume()
                                 }
                                 null -> Unit
                             }
                         }
+
+                        when (gesture) {
+                            HubGesture.LEFT, HubGesture.RIGHT -> {
+                                val velocity = if (released) {
+                                    -velocityTracker.calculateVelocity().x / widthPx
+                                } else 0f
+                                val target = if (released) hubSwipeTarget(
+                                    pagePosition, startPage, velocity, minimumFlingVelocityPx / widthPx
+                                ) else pagePosition.roundToInt().coerceIn(0, 2)
+                                settleToPage(HubPage.entries[target], velocity)
+                            }
+                            HubGesture.DOWN -> {
+                                if (released && pullOffset >= pullToAddThresholdPx) showAdd = true
+                            }
+                            null -> if (interrupted) {
+                                settleToPage(HubPage.entries[startPage])
+                            }
+                        }
+                        pullOffset = 0f
                     }
-                } else Modifier
-            )
+                } finally {
+                    // Rotation, navigation and cancelled input cannot strand a partial page.
+                    settleGeneration++
+                    settleJob?.cancel()
+                    settling = false
+                    pagePosition = currentPage.index.toFloat()
+                    pullOffset = 0f
+                }
+            }
     ) {
         HubPage.entries.forEach { page ->
-            // Keep the high-frequency drag state out of composition. Reading
-            // dragOffsetX inside graphicsLayer invalidates only the render layer
-            // instead of recomposing Tasks/Home/History on every pointer move.
-            val pageBaseOffset = (page.index - currentPage.index) * widthPx
+            // Read the same absolute position in each layer, with no per-frame composition.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { translationX = pageBaseOffset + dragOffsetX }
+                    .graphicsLayer { translationX = (page.index - pagePosition) * widthPx }
             ) {
                 when (page) {
                     HubPage.TASKS -> TaskListScreen(
                         viewModel = viewModel,
-                        onBack = { settleToPage(HubPage.HOME, 0f) }
+                        onBack = { settleToPage(HubPage.HOME) }
                     )
                     HubPage.HISTORY -> HistoryScreen(
                         viewModel = viewModel,
-                        onBack = { settleToPage(HubPage.HOME, 0f) }
+                        onBack = { settleToPage(HubPage.HOME) }
                     )
                     HubPage.HOME -> HomePageContent(
                         mandatory = mandatory,
@@ -300,23 +257,22 @@ fun HomeScreen(
                         onCompleteMandatory = { viewModel.completeMandatory(it) },
                         onCompleteBonus = { viewModel.completeBonus(it) },
                         onUseRestCredit = { viewModel.useRestCreditToday() },
-                        onOpenTasks = { settleToPage(HubPage.TASKS, 0f) },
-                        onOpenHistory = { settleToPage(HubPage.HISTORY, 0f) },
+                        onOpenTasks = { settleToPage(HubPage.TASKS) },
+                        onOpenHistory = { settleToPage(HubPage.HISTORY) },
                         onOpenSettings = onOpenSettings
                     )
                 }
             }
         }
 
-        if (currentPage == HubPage.HOME && pullProgress > 0f) {
-            PullToAddIndicator(
-                progress = pullProgress,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 8.dp)
-            )
-        }
+        // Isolate pull progress reads from the three persistent page compositions.
+        PullToAddOverlay(
+            progress = { (pullOffset / pullToAddThresholdPx).coerceIn(0f, 1f) },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 8.dp)
+        )
     }
 
     if (showAdd) {
@@ -522,6 +478,12 @@ private fun HomePageContent(
             }
         }
     }
+}
+
+@Composable
+private fun PullToAddOverlay(progress: () -> Float, modifier: Modifier = Modifier) {
+    val value = progress()
+    if (value > 0f) PullToAddIndicator(value, modifier)
 }
 
 @Composable

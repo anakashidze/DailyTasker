@@ -39,6 +39,19 @@ jobs:
           gradle-version: '8.7'
           cache-provider: basic
 
+      - name: Run regression tests
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Upload test results and Room schema
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: DailyTasker-alpha7-test-results
+          path: |
+            app/build/test-results/testDebugUnitTest
+            app/build/reports/tests/testDebugUnitTest
+            app/schemas
+
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
@@ -67,7 +80,7 @@ jobs:
       - name: Upload verified APK
         uses: actions/upload-artifact@v6
         with:
-          name: TaskNext-v2.0.0-alpha6-verified-apk
+          name: DailyTasker-v2.0.0-alpha7-verified-apk
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/app-debug.apk.sha256

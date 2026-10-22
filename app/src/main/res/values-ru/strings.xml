@@ -108,4 +108,11 @@
     <string name="notification_streak_body">Ваша серия из %1$d дней ещё не защищена. Выполните задачу на сегодня или используйте кредит отдыха.</string>
     <string name="notification_today_open_body">Сегодняшний день ещё не закрыт. Выполните большую задачу или используйте кредит отдыха.</string>
     <string name="widget_overdue_count">Просроченных задач: %1$d</string>
+    <string name="snooze_label">Отложить</string>
+    <string name="snooze_minutes_value">%1$d мин</string>
+    <string name="snooze_range">Введите от 1 до 1440 минут</string>
+    <string name="notification_task_channel">Напоминания о задачах</string>
+    <string name="notification_task_title">Пора: %1$s</string>
+    <string name="notification_task_body">Нажмите, чтобы открыть TaskNext</string>
+    <string name="notification_task_snooze">Отложить на %1$d мин</string>
 </resources>

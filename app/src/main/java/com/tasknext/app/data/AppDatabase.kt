@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Task::class, CompletionLog::class, DailyOutcome::class, SmallTaskCompletion::class], version = 9, exportSchema = false)
+@Database(entities = [Task::class, CompletionLog::class, DailyOutcome::class, SmallTaskCompletion::class], version = 10, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
 
@@ -119,6 +119,36 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v9 has already shipped, so repair it with a forward migration rather than
+        // changing an old migration that installed users will never run again.
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    INSERT INTO small_task_completion (taskId, epochDay, completedAtEpochMillis)
+                    SELECT history.taskId, history.epochDay, history.completedAtEpochMillis
+                    FROM (
+                        SELECT taskId,
+                            COALESCE(effectiveEpochDay, CAST(
+                                julianday(completedAtEpochMillis / 1000, 'unixepoch', 'localtime', 'start of day')
+                                - 2440587.5 AS INTEGER)) AS epochDay,
+                            MIN(completedAtEpochMillis) AS completedAtEpochMillis
+                        FROM completion_log
+                        WHERE eventType = 'COMPLETED' AND taskSizeSnapshot = 'SMALL'
+                        GROUP BY taskId, epochDay
+                    ) AS history
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM small_task_completion AS ledger
+                        WHERE ledger.taskId = history.taskId AND ledger.epochDay = history.epochDay
+                    )
+                """.trimIndent())
+            }
+        }
+
+        internal val ALL_MIGRATIONS = arrayOf(
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10
+        )
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -126,7 +156,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "tasknext.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(*ALL_MIGRATIONS)
                     .build()
                     .also { INSTANCE = it }
             }

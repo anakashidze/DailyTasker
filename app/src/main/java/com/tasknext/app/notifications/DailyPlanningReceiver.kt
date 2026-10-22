@@ -94,7 +94,7 @@ class DailyPlanningReceiver : BroadcastReceiver() {
                 }
 
                 // Every daily alarm schedules its next occurrence after firing.
-                NotificationScheduler.syncDailyReminders(context, settings, todayTask)
+                NotificationScheduler.syncDailyReminders(context, settings, todayTask, onlyAction = intent.action)
             } finally {
                 pendingResult.finish()
             }
@@ -108,7 +108,7 @@ class DailyPlanningReceiver : BroadcastReceiver() {
         )
     }
 
-    private fun showPlanningNotification(
+    internal fun showPlanningNotification(
         context: Context,
         settings: SettingsStore,
         notificationId: Int,

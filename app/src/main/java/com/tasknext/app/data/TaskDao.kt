@@ -41,6 +41,14 @@ interface TaskDao {
 
     @Transaction
     suspend fun archiveAsCompleted(task: Task, log: CompletionLog) {
+        // Keep credit progress, History and task archival in one transaction.
+        if (task.taskSize == TaskSize.SMALL) {
+            insertSmallTaskCompletion(SmallTaskCompletion(
+                taskId = task.id,
+                epochDay = requireNotNull(log.effectiveEpochDay),
+                completedAtEpochMillis = log.completedAtEpochMillis
+            ))
+        }
         insertLog(log)
         update(task.copy(slot = null, reminderEnabled = false, isArchived = true))
     }

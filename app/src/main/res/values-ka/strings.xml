@@ -108,4 +108,11 @@
     <string name="notification_streak_body">თქვენი %1$d-დღიანი სერია ჯერ ღიაა. შეასრულეთ დღევანდელი დავალება ან გამოიყენეთ დასვენების კრედიტი.</string>
     <string name="notification_today_open_body">დღე ჯერ ღიაა. შეასრულეთ დიდი დავალება ან გამოიყენეთ დასვენების კრედიტი.</string>
     <string name="widget_overdue_count">%1$d ვადაგადაცილებული დავალება საჭიროებს ყურადღებას</string>
+    <string name="snooze_label">გადადება</string>
+    <string name="snooze_minutes_value">%1$d წთ</string>
+    <string name="snooze_range">შეიყვანეთ 1–1440 წუთი</string>
+    <string name="notification_task_channel">დავალების შეხსენებები</string>
+    <string name="notification_task_title">დროა: %1$s</string>
+    <string name="notification_task_body">შეეხეთ TaskNext-ის გასახსნელად</string>
+    <string name="notification_task_snooze">გადადება %1$d წუთით</string>
 </resources>

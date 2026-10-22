@@ -12,8 +12,8 @@ android {
         applicationId = "com.tasknext.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "2.0.0-alpha6"
+        versionCode = 32
+        versionName = "2.0.0-alpha7"
     }
 
     signingConfigs {
@@ -43,6 +43,8 @@ android {
         jvmTarget = "1.8"
     }
 
+    testOptions { unitTests.isIncludeAndroidResources = true }
+
     buildFeatures {
         compose = true
     }
@@ -51,6 +53,8 @@ android {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
@@ -71,6 +75,9 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.13")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

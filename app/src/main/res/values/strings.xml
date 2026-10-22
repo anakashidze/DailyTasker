@@ -108,4 +108,11 @@
     <string name="notification_streak_body">Your %1$d-day streak is still open. Complete Today or use a Rest Credit if available.</string>
     <string name="notification_today_open_body">Today is still open. Complete your Big task or use a Rest Credit if available.</string>
     <string name="widget_overdue_count">%1$d overdue task(s) need attention</string>
+    <string name="snooze_label">Snooze</string>
+    <string name="snooze_minutes_value">%1$d min</string>
+    <string name="snooze_range">Enter 1–1440 minutes</string>
+    <string name="notification_task_channel">Task reminders</string>
+    <string name="notification_task_title">Time for: %1$s</string>
+    <string name="notification_task_body">Tap to open TaskNext</string>
+    <string name="notification_task_snooze">Snooze %1$d min</string>
 </resources>

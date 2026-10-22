@@ -357,14 +357,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         task: Task,
         effectiveEpochDay: Long = todayEpochDay()
     ) {
-        if (task.taskSize == TaskSize.SMALL) {
-            dao.insertSmallTaskCompletion(
-                SmallTaskCompletion(
-                    taskId = task.id,
-                    epochDay = effectiveEpochDay
-                )
-            )
-        }
         val log = CompletionLog(
             taskId = task.id,
             titleSnapshot = task.title,

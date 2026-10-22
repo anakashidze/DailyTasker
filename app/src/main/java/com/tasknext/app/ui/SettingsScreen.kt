@@ -1,10 +1,9 @@
 package com.tasknext.app.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,8 +13,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,7 +35,9 @@ fun SettingsScreen(
     var notificationsEnabled by remember { mutableStateOf(settings.notificationsEnabled) }
     var defaultHour by remember { mutableIntStateOf(settings.defaultReminderHour) }
     var defaultMinute by remember { mutableIntStateOf(settings.defaultReminderMinute) }
-    var snoozeText by remember { mutableStateOf(settings.snoozeMinutes.coerceIn(1, 24 * 60).toString()) }
+    var snoozeMinutes by remember { mutableIntStateOf(settings.snoozeMinutes.coerceIn(1, 24 * 60)) }
+    var snoozeText by remember { mutableStateOf(snoozeMinutes.toString()) }
+    var showSnoozeEditor by remember { mutableStateOf(false) }
     var darkTheme by remember { mutableStateOf(settings.darkTheme) }
     var groupByDay by remember { mutableStateOf(settings.groupHistoryByDay) }
 
@@ -123,15 +124,13 @@ fun SettingsScreen(
                     enabled = notificationsEnabled
                 )
 
-                CompactSnoozeRow(
-                    label = stringResource(R.string.snooze_duration),
-                    value = snoozeText,
+                CompactValueRow(
+                    label = stringResource(R.string.snooze_label),
+                    value = stringResource(R.string.snooze_minutes_value, snoozeMinutes),
                     enabled = notificationsEnabled,
-                    onValueChange = { value ->
-                        if (value.all { it.isDigit() } && value.length <= 4) {
-                            snoozeText = value
-                            value.toIntOrNull()?.coerceIn(1, 24 * 60)?.let(viewModel::setSnoozeMinutes)
-                        }
+                    onValueClick = {
+                        snoozeText = snoozeMinutes.toString()
+                        showSnoozeEditor = true
                     }
                 )
 
@@ -238,6 +237,42 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(8.dp))
         }
+    }
+
+    if (showSnoozeEditor) {
+        val minutes = snoozeText.toIntOrNull()
+        val valid = minutes != null && minutes in 1..1440
+        fun saveSnooze() {
+            if (valid) {
+                snoozeMinutes = minutes!!
+                viewModel.setSnoozeMinutes(snoozeMinutes)
+                showSnoozeEditor = false
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { showSnoozeEditor = false },
+            title = { Text(stringResource(R.string.snooze_duration)) },
+            text = {
+                OutlinedTextField(
+                    value = snoozeText,
+                    onValueChange = { value ->
+                        if (value.length <= 4 && value.all { it in '0'..'9' }) snoozeText = value
+                    },
+                    singleLine = true,
+                    isError = !valid,
+                    supportingText = { Text(stringResource(R.string.snooze_range)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { saveSnooze() }),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(enabled = valid, onClick = { saveSnooze() }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSnoozeEditor = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
 
     if (showDefaultTimePicker) {
@@ -388,51 +423,6 @@ private fun CompactValueRow(
         ) {
             Text(value, style = MaterialTheme.typography.labelMedium)
         }
-    }
-}
-
-@Composable
-private fun CompactSnoozeRow(
-    label: String,
-    value: String,
-    enabled: Boolean,
-    onValueChange: (String) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 42.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (enabled) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f)
-        )
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            enabled = enabled,
-            singleLine = true,
-            textStyle = MaterialTheme.typography.labelMedium.copy(
-                color = if (enabled) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurfaceVariant
-            ),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            modifier = Modifier
-                .width(54.dp)
-                .height(32.dp)
-                .border(
-                    width = 1.dp,
-                    color = if (enabled) MaterialTheme.colorScheme.outline
-                    else MaterialTheme.colorScheme.outlineVariant,
-                    shape = RoundedCornerShape(8.dp)
-                )
-                .padding(horizontal = 8.dp, vertical = 7.dp)
-        )
     }
 }
 

@@ -22,7 +22,8 @@ object NotificationScheduler {
 
     fun schedule(context: Context, task: Task, defaultHour: Int, defaultMinute: Int) {
         val settings = SettingsStore(context)
-        if (!settings.notificationsEnabled || !task.reminderEnabled || task.slot == null) {
+        if (!settings.notificationsEnabled || !task.reminderEnabled || task.slot == null ||
+            task.isArchived || task.overdueSinceEpochDay != null) {
             cancel(context, task.id)
             return
         }
@@ -52,55 +53,60 @@ object NotificationScheduler {
     fun syncDailyReminders(
         context: Context,
         settings: SettingsStore,
-        todayTask: Task?
+        todayTask: Task?,
+        onlyAction: String? = null
     ) {
         if (!settings.notificationsEnabled) {
             cancelDailyReminders(context)
             return
         }
 
-        if (settings.planTomorrowReminderEnabled) {
-            scheduleDailyAction(
-                context = context,
-                action = ACTION_PLAN_TOMORROW,
-                requestCode = PLAN_REQUEST_CODE,
-                triggerAtMillis = nextOccurrence(
-                    settings.planTomorrowReminderHour,
-                    settings.planTomorrowReminderMinute
+        if (onlyAction == null || onlyAction == ACTION_PLAN_TOMORROW) {
+            if (settings.planTomorrowReminderEnabled) {
+                scheduleDailyAction(
+                    context = context,
+                    action = ACTION_PLAN_TOMORROW,
+                    requestCode = PLAN_REQUEST_CODE,
+                    triggerAtMillis = nextOccurrence(
+                        settings.planTomorrowReminderHour,
+                        settings.planTomorrowReminderMinute
+                    )
                 )
-            )
-        } else {
-            cancelDailyAction(context, ACTION_PLAN_TOMORROW, PLAN_REQUEST_CODE)
-        }
-
-        if (settings.streakRiskReminderEnabled) {
-            val preferredMinutes =
-                settings.streakRiskReminderHour * 60 + settings.streakRiskReminderMinute
-
-            val taskReminderMinutes = if (todayTask?.reminderEnabled == true) {
-                val hour = todayTask.reminderHour ?: settings.defaultReminderHour
-                val minute = todayTask.reminderMinute ?: settings.defaultReminderMinute
-                hour.coerceIn(0, 23) * 60 + minute.coerceIn(0, 59)
             } else {
-                -1
+                cancelDailyAction(context, ACTION_PLAN_TOMORROW, PLAN_REQUEST_CODE)
             }
 
-            val effectiveMinutes = max(
-                preferredMinutes,
-                if (taskReminderMinutes >= 0) taskReminderMinutes + 15 else preferredMinutes
-            ).coerceAtMost(23 * 60 + 59)
+        }
+        if (onlyAction == null || onlyAction == ACTION_STREAK_RISK) {
+            if (settings.streakRiskReminderEnabled) {
+                val preferredMinutes =
+                    settings.streakRiskReminderHour * 60 + settings.streakRiskReminderMinute
 
-            scheduleDailyAction(
-                context = context,
-                action = ACTION_STREAK_RISK,
-                requestCode = STREAK_REQUEST_CODE,
-                triggerAtMillis = nextOccurrence(
-                    effectiveMinutes / 60,
-                    effectiveMinutes % 60
+                val taskReminderMinutes = if (todayTask?.reminderEnabled == true) {
+                    val hour = todayTask.reminderHour ?: settings.defaultReminderHour
+                    val minute = todayTask.reminderMinute ?: settings.defaultReminderMinute
+                    hour.coerceIn(0, 23) * 60 + minute.coerceIn(0, 59)
+                } else {
+                    -1
+                }
+
+                val effectiveMinutes = max(
+                    preferredMinutes,
+                    if (taskReminderMinutes >= 0) taskReminderMinutes + 15 else preferredMinutes
+                ).coerceAtMost(23 * 60 + 59)
+
+                scheduleDailyAction(
+                    context = context,
+                    action = ACTION_STREAK_RISK,
+                    requestCode = STREAK_REQUEST_CODE,
+                    triggerAtMillis = nextOccurrence(
+                        effectiveMinutes / 60,
+                        effectiveMinutes % 60
+                    )
                 )
-            )
-        } else {
-            cancelDailyAction(context, ACTION_STREAK_RISK, STREAK_REQUEST_CODE)
+            } else {
+                cancelDailyAction(context, ACTION_STREAK_RISK, STREAK_REQUEST_CODE)
+            }
         }
     }
 

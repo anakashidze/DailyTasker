@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class SettingsStore(context: Context) {
+    private val appContext = context.applicationContext
     private val prefs = context.applicationContext.getSharedPreferences("tasknext_settings", Context.MODE_PRIVATE)
 
     var defaultReminderHour: Int
@@ -85,8 +86,8 @@ class SettingsStore(context: Context) {
         set(@Suppress("UNUSED_PARAMETER") value) = Unit
 
     var languageCode: String
-        get() = prefs.getString("language_code", "en") ?: "en"
-        set(value) = prefs.edit().putString("language_code", value).apply()
+        get() = AppLocale.languageCode(appContext)
+        set(value) = AppLocale.setLanguage(appContext, value)
 
     var lastActiveEpochDay: Long
         get() = prefs.getLong("last_active_epoch_day", -1L)
