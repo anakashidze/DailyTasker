@@ -15,6 +15,10 @@ import org.robolectric.annotation.Config
 class MigrationTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
 
+    private inline fun AppDatabase.useDatabase(block: (AppDatabase) -> Unit) {
+        try { block(this) } finally { close() }
+    }
+
     // A standalone released v6 schema, including defaults installed by v1-v6 upgrades.
     private fun legacyDatabase(version: Int, seed: (SQLiteDatabase) -> Unit): AppDatabase {
         val name = "migration-$version.db"
@@ -60,7 +64,7 @@ class MigrationTest {
         legacyDatabase(6) { db ->
             db.execSQL("""INSERT INTO tasks (title,colorHex,priority,comment,reminderEnabled,orderIndex,slot,isArchived)
                 VALUES ('Keep me','#4F46E5','MEDIUM','Original comment',1,4,1,0)""")
-        }.use { room ->
+        }.useDatabase { room ->
             // Opening through Room runs all migrations AND generated schema validation.
             room.openHelper.writableDatabase.query("SELECT title, comment, taskSize, slot FROM tasks").use { c ->
                 c.moveToFirst()
@@ -84,7 +88,7 @@ class MigrationTest {
             addHistory(db, 6, "DELETED")
             addHistory(db, 7, "RECOVERED")
             addHistory(db, 8, size = "BIG")
-        }.use { room ->
+        }.useDatabase { room ->
             room.openHelper.writableDatabase.query("SELECT COUNT(*), MIN(epochDay) FROM small_task_completion").use { c ->
                 c.moveToFirst()
                 assertEquals(5, c.getInt(0))
@@ -101,7 +105,7 @@ class MigrationTest {
             db.execSQL("INSERT INTO small_task_completion (taskId,epochDay,completedAtEpochMillis) VALUES (1,20000,1719999999998)")
             // Credit remains valid even when its visible History has been cleared.
             db.execSQL("INSERT INTO small_task_completion (taskId,epochDay,completedAtEpochMillis) VALUES (3,20000,1720000000001)")
-        }.use { room ->
+        }.useDatabase { room ->
             room.openHelper.writableDatabase.query("SELECT COUNT(*) FROM small_task_completion").use { c ->
                 c.moveToFirst()
                 assertEquals(3, c.getInt(0))
