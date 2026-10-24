@@ -57,7 +57,12 @@ class TaskDragTest {
         rule.mainClock.autoAdvance = false
         node.performTouchInput { down(center) }
         rule.mainClock.advanceTimeBy(650)
-        node.performTouchInput { moveBy(Offset(0f, delta)) }
+        node.performTouchInput {
+            advanceEventTime(650)
+            moveBy(Offset(0f, delta / 2))
+        }
+        rule.mainClock.advanceTimeByFrame()
+        node.performTouchInput { moveBy(Offset(0f, delta / 2)) }
         rule.mainClock.advanceTimeByFrame()
         return first.top to rule.onNodeWithTag("drag-overlay").fetchSemanticsNode().boundsInRoot.top
     }
@@ -67,7 +72,7 @@ class TaskDragTest {
         rule.onNodeWithTag("task-card-${ids[0]}").performTouchInput { up() }
         rule.mainClock.advanceTimeByFrame()
         val afterRelease = rule.onNodeWithTag("drag-overlay").fetchSemanticsNode().boundsInRoot.top
-        assertTrue("The card must not jump back to its original slot", abs(afterRelease - releaseTop) < abs(afterRelease - originalTop))
+        assertTrue("The card must not jump back: original=$originalTop release=$releaseTop after=$afterRelease", abs(afterRelease - releaseTop) < abs(afterRelease - originalTop))
         rule.mainClock.autoAdvance = true
         rule.waitUntil(5000) { runBlocking { db.taskDao().getAllOnce().map { it.id } } == listOf(ids[1], ids[0], ids[2]) }
         rule.waitForIdle()

@@ -53,7 +53,7 @@ internal fun insertionIndexAt(center: Float, visibleCenters: List<Pair<Int, Floa
         ?: visibleCenters.lastOrNull()?.first?.plus(1) ?: fallback
 
 internal fun previewDisplacement(origin: Int, target: Int, index: Int, extent: Float): Float = when {
-    origin < 0 && index >= target -> extent
+    origin < 0 -> if (index >= target) extent else 0f
     target > origin && index in (origin + 1)..target -> -extent
     target < origin && index in target until origin -> extent
     else -> 0f

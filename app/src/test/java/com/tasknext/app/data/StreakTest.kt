@@ -81,6 +81,15 @@ class StreakTest {
         assertFalse(db.taskDao().getById(bonus.id)!!.isArchived)
         assertEquals(0, db.taskDao().countSmallTaskCompletions(today, today))
     }
+    @Test fun undoDoesNotCreateTwoTasksInAnOccupiedSlot() = runBlocking {
+        val originalId = db.taskDao().insert(Task(title = "Original", slot = 1, taskSize = TaskSize.SMALL))
+        val original = db.taskDao().getById(originalId)!!
+        repository.completeBonus(originalId)
+        val replacement = db.taskDao().insert(Task(title = "Replacement", slot = 1, taskSize = TaskSize.SMALL))
+        repository.undoCompletion(original, -1L, -1L, 0, -1L)
+        assertNull(db.taskDao().getById(originalId)!!.slot)
+        assertEquals(1, db.taskDao().getById(replacement)!!.slot)
+    }
     @Test fun noonLockCannotSaveMinutesAfterNoon() {
         settings.todayLockHour = 12
         settings.todayLockMinute = 45

@@ -171,9 +171,14 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         previousStreakCount: Int,
         previousStreakLastCompletedEpochDay: Long
     ) {
-        dao.undoCompletion(task)
+        if (dao.getById(task.id)?.isArchived != true) return
         val today = todayEpochDay()
-        if (task.slot == 0 && dao.getDailyOutcome(today)?.sourceTaskId == task.id) {
+        val outcome = dao.getDailyOutcome(today)
+        val slotOccupied = task.slot != null && dao.getAllOnce().any { it.id != task.id && it.slot == task.slot }
+        val laterMainCompleted = task.slot == 0 && outcome?.status == DailyOutcomeStatus.COMPLETED && outcome.sourceTaskId != task.id
+        // Undo must not displace a later selection or create two tasks in one slot.
+        dao.undoCompletion(if (slotOccupied || laterMainCompleted) task.copy(slot = null) else task)
+        if (task.slot == 0 && outcome?.sourceTaskId == task.id) {
             dao.deleteDailyOutcome(today)
         }
         settings.queuedTomorrowTaskId = previousQueuedTomorrowTaskId

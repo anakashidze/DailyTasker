@@ -73,10 +73,12 @@ private class FloatingTask(val task: Task, val origin: TaskPlacement, val tag: S
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
-    val pool by viewModel.pool.collectAsState()
-    val mandatory by viewModel.mandatoryTask.collectAsState()
-    val bonusTasks by viewModel.bonusTasks.collectAsState()
-    val overdueTasks by viewModel.overdueTasks.collectAsState()
+    // One Room snapshot keeps IDs unique while tasks cross section boundaries.
+    val tasksSnapshot by viewModel.allTasks.collectAsState()
+    val pool = tasksSnapshot.filter { it.slot == null && it.overdueSinceEpochDay == null }
+    val mandatory = tasksSnapshot.firstOrNull { it.slot == 0 && it.overdueSinceEpochDay == null }
+    val bonusTasks = tasksSnapshot.filter { it.slot != null && it.slot != 0 && it.overdueSinceEpochDay == null }.sortedBy { it.slot }
+    val overdueTasks = tasksSnapshot.filter { it.overdueSinceEpochDay != null }.sortedBy { it.overdueSinceEpochDay }
     val queuedTomorrowId by viewModel.queuedTomorrowTaskId.collectAsState()
     val taskGroups by viewModel.taskGroups.collectAsState()
     val clock = rememberAppClock()
@@ -96,6 +98,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var rootBounds by remember { mutableStateOf(Rect.Zero) }
     var listBounds by remember { mutableStateOf(Rect.Zero) }
     val placements = remember { mutableMapOf<Long, TaskPlacement>() }
+    val poolHeaders = remember { mutableMapOf<TaskSize, Rect>() }
     var floating by remember { mutableStateOf<FloatingTask?>(null) }
     var autoScrollJob by remember { mutableStateOf<Job?>(null) }
     var localPool by remember { mutableStateOf(pool) }
@@ -108,9 +111,11 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             pendingOrder = null
         }
     }
-    val bigPool = localPool.filter { it.taskSize == TaskSize.BIG }
-    val smallPool = localPool.filter { it.taskSize == TaskSize.SMALL }
-    val allTasks = overdueTasks + listOfNotNull(mandatory) + bonusTasks + localPool
+    val activeIds = (overdueTasks + listOfNotNull(mandatory) + bonusTasks).map { it.id }.toSet()
+    val bigPool = localPool.filter { it.taskSize == TaskSize.BIG && it.id !in activeIds }
+    val smallPool = localPool.filter { it.taskSize == TaskSize.SMALL && it.id !in activeIds }
+    val allTasks = tasksSnapshot
+    SideEffect { placements.keys.retainAll(tasksSnapshot.map { it.id }.toSet()) }
     val editing = allTasks.firstOrNull { it.id == editingId }
 
     fun deleteWithUndo(task: Task) {
@@ -128,7 +133,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
 
     fun updatePreview(drag: FloatingTask) {
         if (drag.released) return
-        val todayBounds = mandatory?.let { placements[it.id]?.bounds }
+        val visibleKeys = listState.layoutInfo.visibleItemsInfo.map { it.key }.toSet()
+        val todayBounds = mandatory?.takeIf { it.id in visibleKeys }?.let { placements[it.id]?.bounds }
         if (drag.task.taskSize == TaskSize.BIG && !todayLocked && todayBounds != null &&
             drag.top < todayBounds.center.y) {
             drag.destination = "today"
@@ -136,8 +142,11 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             return
         }
         // An active task stays in its own section until it reaches the backlog.
-        val firstPoolTop = localPool.mapNotNull { placements[it.id]?.bounds?.top }.minOrNull()
-        if (drag.origin.section != "pool" && firstPoolTop != null && drag.top < firstPoolTop - spacingPx) {
+        val headerKey = if (drag.task.taskSize == TaskSize.BIG) "big-header" else "small-header"
+        val firstPoolTop = if (headerKey in visibleKeys) poolHeaders[drag.task.taskSize]?.bottom else
+            localPool.filter { it.taskSize == drag.task.taskSize && it.id in visibleKeys }
+                .mapNotNull { placements[it.id]?.bounds?.top }.minOrNull()
+        if (drag.origin.section != "pool" && (firstPoolTop == null || drag.top < firstPoolTop - spacingPx)) {
             drag.destination = drag.origin.section
             drag.targetIndex = drag.origin.index
             return
@@ -339,7 +348,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     item { SectionTitle(stringResource(R.string.bonus_today)) }
                     items(bonusTasks, key = { it.id }) { TaskCard(it, "bonus", tag = stringResource(R.string.bonus_upper)) }
                 }
-                item { Column {
+                item(key = "big-header") { Column(Modifier.onGloballyPositioned { poolHeaders[TaskSize.BIG] = it.boundsInRoot() }) {
                     SectionTitle(stringResource(R.string.next_tasks))
                     Text(stringResource(R.string.next_tasks_description), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -348,7 +357,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 itemsIndexed(bigPool, key = { _, task -> task.id }) { index, task ->
                     TaskCard(task, "pool", index, queueDateLabel(context, index, clock.toLocalDate()))
                 }
-                item { Column {
+                item(key = "small-header") { Column(Modifier.onGloballyPositioned { poolHeaders[TaskSize.SMALL] = it.boundsInRoot() }) {
                     SectionTitle(stringResource(R.string.bonus_backlog))
                     Text(stringResource(R.string.bonus_backlog_description), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
