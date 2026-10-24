@@ -340,8 +340,11 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                     if (event.changes.any { it.id != down.id && it.pressed }) break
                                     if (!change.pressed) {
+                                        // Compose represents Android cancellation with
+                                        // consumed synthetic ups. Only a real release commits.
+                                        val cancelled = change.isConsumed
                                         change.consume()
-                                        endDrag(false)
+                                        endDrag(cancelled)
                                         released = true
                                         break
                                     }
