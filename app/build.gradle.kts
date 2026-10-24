@@ -12,8 +12,8 @@ android {
         applicationId = "com.tasknext.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 32
-        versionName = "2.0.0-alpha7"
+        versionCode = 33
+        versionName = "2.0.0-alpha8"
     }
 
     signingConfigs {
@@ -77,6 +77,8 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("org.robolectric:robolectric:4.13")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

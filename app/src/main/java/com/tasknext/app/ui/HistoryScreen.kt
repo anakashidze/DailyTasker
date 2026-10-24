@@ -13,6 +13,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,10 +36,23 @@ import java.util.*
 fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val history by viewModel.history.collectAsState()
     val groupByDay = viewModel.settings.groupHistoryByDay
+    val snackbarHost = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    fun deleteWithUndo(log: CompletionLog) {
+        val job = viewModel.deleteHistoryRecord(log.id)
+        scope.launch {
+            job.join()
+            showTaskUndo(snackbarHost, context.getString(R.string.history_record_deleted), context.getString(R.string.undo)) {
+                viewModel.restoreHistoryRecord(log)
+            }
+        }
+    }
     var confirmClearAll by remember { mutableStateOf(false) }
     var selectedLog by remember { mutableStateOf<CompletionLog?>(null) }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHost) },
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
@@ -94,7 +109,7 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                                 log = log,
                                 timeFormat = timeFormat,
                                 onOpen = { selectedLog = log },
-                                onDelete = { viewModel.deleteHistoryRecord(log.id) }
+                                onDelete = { deleteWithUndo(log) }
                             )
                         }
                     }
@@ -104,7 +119,7 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                             log = log,
                             timeFormat = fullFormat,
                             onOpen = { selectedLog = log },
-                            onDelete = { viewModel.deleteHistoryRecord(log.id) }
+                            onDelete = { deleteWithUndo(log) }
                         )
                     }
                 }
@@ -135,6 +150,7 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             confirmButton = {
                 TextButton(
                     onClick = {
+                        snackbarHost.currentSnackbarData?.dismiss()
                         viewModel.clearHistory()
                         confirmClearAll = false
                     }

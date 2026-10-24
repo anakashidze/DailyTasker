@@ -58,8 +58,8 @@ class SettingsStore(context: Context) {
         get() = prefs.getInt("today_lock_hour", 11)
         set(value) = prefs.edit().putInt("today_lock_hour", value.coerceIn(0, 12)).apply()
     var todayLockMinute: Int
-        get() = prefs.getInt("today_lock_minute", 0)
-        set(value) = prefs.edit().putInt("today_lock_minute", value.coerceIn(0, 59)).apply()
+        get() = if (todayLockHour == 12) 0 else prefs.getInt("today_lock_minute", 0)
+        set(value) = prefs.edit().putInt("today_lock_minute", (if (todayLockHour == 12) 0 else value.coerceIn(0, 59))).apply()
 
     var planTomorrowReminderEnabled: Boolean
         get() = prefs.getBoolean("plan_tomorrow_reminder_enabled", true)

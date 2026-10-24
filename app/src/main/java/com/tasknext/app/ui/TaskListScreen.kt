@@ -3,11 +3,8 @@ package com.tasknext.app.ui
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
@@ -26,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,20 +34,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import com.tasknext.app.R
 import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
@@ -60,11 +54,23 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-@OptIn(
-    ExperimentalMaterial3Api::class,
-    ExperimentalMaterialApi::class,
-    ExperimentalFoundationApi::class
-)
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
+import kotlinx.coroutines.isActive
+
+private data class TaskPlacement(val bounds: Rect, val section: String, val index: Int)
+
+@Stable
+private class FloatingTask(val task: Task, val origin: TaskPlacement, val tag: String?) {
+    var top by mutableFloatStateOf(origin.bounds.top)
+    var alpha by mutableFloatStateOf(1f)
+    var released by mutableStateOf(false)
+    var destination by mutableStateOf(origin.section)
+    var targetIndex by mutableIntStateOf(origin.index)
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val pool by viewModel.pool.collectAsState()
@@ -73,620 +79,298 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val overdueTasks by viewModel.overdueTasks.collectAsState()
     val queuedTomorrowId by viewModel.queuedTomorrowTaskId.collectAsState()
     val taskGroups by viewModel.taskGroups.collectAsState()
-    var showAdd by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<Task?>(null) }
+    val clock = rememberAppClock()
+    val todayLocked = viewModel.isTodayLocked()
+    var showAdd by rememberSaveable { mutableStateOf(false) }
+    var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var backdateTask by remember { mutableStateOf<Task?>(null) }
-    var draggingTaskId by remember { mutableStateOf<Long?>(null) }
-    var todayCardTopPx by remember { mutableStateOf<Float?>(null) }
-    var firstBacklogCardTopPx by remember { mutableStateOf<Float?>(null) }
-    var backlogHeaderTopPx by remember { mutableStateOf<Float?>(null) }
-    val taskCardBounds = remember { mutableMapOf<Long, Rect>() }
-    val listState = rememberLazyListState()
-    var listBounds by remember { mutableStateOf<Rect?>(null) }
-    var dragPreviewIndex by remember { mutableStateOf<Int?>(null) }
-    var dragOriginalIndex by remember { mutableStateOf<Int?>(null) }
-    var draggingTaskSize by remember { mutableStateOf<TaskSize?>(null) }
-    var dragScrollCompensation by remember { mutableFloatStateOf(0f) }
-    var autoScrollJob by remember { mutableStateOf<Job?>(null) }
-
-    var pendingTodayTask by remember { mutableStateOf<Task?>(null) }
-    var pendingPreviousTodayId by remember { mutableStateOf<Long?>(null) }
-
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-
-    val sortedPool = remember(pool) { pool.sortedBy { it.orderIndex } }
-    var localPool by remember { mutableStateOf<List<Task>>(sortedPool) }
-    var pendingPersistedOrder by remember { mutableStateOf<List<Long>?>(null) }
-
-    LaunchedEffect(
-        sortedPool,
-        mandatory,
-        draggingTaskId,
-        pendingPersistedOrder,
-        pendingTodayTask,
-        pendingPreviousTodayId
-    ) {
-        if (draggingTaskId != null) return@LaunchedEffect
-        val incomingIds = sortedPool.map { it.id }
-
-        pendingTodayTask?.let { promoted ->
-            val previousTodayId = pendingPreviousTodayId
-            val todayConfirmed = mandatory?.id == promoted.id
-            val poolConfirmed = promoted.id !in incomingIds &&
-                (previousTodayId == null || previousTodayId in incomingIds)
-
-            if (todayConfirmed && poolConfirmed) {
-                localPool = sortedPool
-                pendingTodayTask = null
-                pendingPreviousTodayId = null
-                pendingPersistedOrder = null
-            } else {
-                val incomingById = sortedPool.associateBy { it.id }
-                localPool = localPool.map { incomingById[it.id] ?: it }
-            }
-            return@LaunchedEffect
-        }
-
-        val pendingIds = pendingPersistedOrder
-        when {
-            pendingIds == null -> localPool = sortedPool
-            incomingIds == pendingIds -> {
-                localPool = sortedPool
-                pendingPersistedOrder = null
-            }
-            incomingIds.toSet() != pendingIds.toSet() -> {
-                localPool = sortedPool
-                pendingPersistedOrder = null
-            }
-            else -> {
-                val incomingById = sortedPool.associateBy { it.id }
-                localPool = localPool.mapNotNull { incomingById[it.id] }
-            }
-        }
-    }
-
-    val displayPool = localPool
-    val bigPool = displayPool.filter { it.taskSize == TaskSize.BIG }
-    val smallPool = displayPool.filter { it.taskSize == TaskSize.SMALL }
-    val displayedMandatory = pendingTodayTask ?: mandatory
-    val todayLocked = viewModel.isTodayLocked()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val listState = rememberLazyListState()
+    val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
-    val dragSpacingPx = with(density) { 8.dp.toPx() }
+    val spacingPx = with(density) { 8.dp.toPx() }
     val edgeZonePx = with(density) { 72.dp.toPx() }
-    val autoScrollStepPx = with(density) { 28.dp.toPx() }
-
-    fun clearDragPreview() {
-        dragPreviewIndex = null
-        dragOriginalIndex = null
-        draggingTaskSize = null
-        dragScrollCompensation = 0f
-        autoScrollJob?.cancel()
-        autoScrollJob = null
-    }
-
-    fun previewShiftFor(taskSize: TaskSize, index: Int, taskId: Long): Float {
-        if (draggingTaskId == null || draggingTaskId == taskId || draggingTaskSize != taskSize) return 0f
-        val target = dragPreviewIndex ?: return 0f
-        val origin = dragOriginalIndex ?: return 0f
-        val extent = (draggingTaskId?.let { taskCardBounds[it]?.height } ?: 0f) + dragSpacingPx
-        if (extent <= dragSpacingPx) return 0f
-
-        return when {
-            origin < 0 -> if (index >= target) extent else 0f
-            target > origin && index in (origin + 1)..target -> -extent
-            target < origin && index in target until origin -> extent
-            else -> 0f
+    val maxScrollPxPerSecond = with(density) { 650.dp.toPx() }
+    var rootBounds by remember { mutableStateOf(Rect.Zero) }
+    var listBounds by remember { mutableStateOf(Rect.Zero) }
+    val placements = remember { mutableMapOf<Long, TaskPlacement>() }
+    var floating by remember { mutableStateOf<FloatingTask?>(null) }
+    var autoScrollJob by remember { mutableStateOf<Job?>(null) }
+    var localPool by remember { mutableStateOf(pool) }
+    var pendingOrder by remember { mutableStateOf<List<Long>?>(null) }
+    LaunchedEffect(pool, pendingOrder, floating) {
+        if (floating?.released == false) return@LaunchedEffect
+        val ids = pool.map { it.id }
+        if (pendingOrder == null || ids == pendingOrder || ids.toSet() != pendingOrder?.toSet()) {
+            localPool = pool
+            pendingOrder = null
         }
     }
-
-    fun maybeAutoScroll(draggedCenterY: Float) {
-        val viewport = listBounds ?: return
-        val direction = when {
-            draggedCenterY < viewport.top + edgeZonePx -> -1f
-            draggedCenterY > viewport.bottom - edgeZonePx -> 1f
-            else -> 0f
-        }
-        if (direction == 0f || autoScrollJob?.isActive == true) return
-
-        autoScrollJob = scope.launch {
-            val consumed = listState.scrollBy(direction * autoScrollStepPx)
-            // Counter the LazyColumn movement so the floating card stays under the finger.
-            dragScrollCompensation += consumed
-        }
-    }
-
-    SideEffect {
-        val activeIds = buildSet {
-            displayedMandatory?.let { add(it.id) }
-            bonusTasks.forEach { add(it.id) }
-            overdueTasks.forEach { add(it.id) }
-            displayPool.forEach { add(it.id) }
-        }
-        taskCardBounds.keys.retainAll(activeIds)
-    }
-
-    fun poolInsertionIndexForTop(taskSize: TaskSize, draggedTaskId: Long?, draggedTopPx: Float): Int {
-        val candidates = localPool.filter { it.taskSize == taskSize && it.id != draggedTaskId }
-        var index = 0
-        for (candidate in candidates) {
-            val top = taskCardBounds[candidate.id]?.top ?: continue
-            if (draggedTopPx >= top) index++ else break
-        }
-        return index.coerceIn(0, candidates.size)
-    }
-
-    fun updatePoolDragPreview(task: Task, effectiveOffsetY: Float, originalIndex: Int) {
-        val bounds = taskCardBounds[task.id] ?: return
-        val draggedTop = bounds.top + effectiveOffsetY
-        val center = draggedTop + bounds.height / 2f
-        maybeAutoScroll(center)
-
-        val todayTop = todayCardTopPx
-        if (
-            task.taskSize == TaskSize.BIG &&
-            !todayLocked &&
-            displayedMandatory != null &&
-            todayTop != null &&
-            draggedTop <= todayTop
-        ) {
-            dragPreviewIndex = null
-            return
-        }
-
-        dragPreviewIndex = poolInsertionIndexForTop(task.taskSize, task.id, draggedTop)
-        dragOriginalIndex = originalIndex
-        draggingTaskSize = task.taskSize
-    }
-
-    fun reorderPoolOnRelease(task: Task, draggedTopPx: Float) {
-        val sameSize = localPool
-            .filter { it.taskSize == task.taskSize && it.id != task.id }
-            .toMutableList()
-        val otherSize = localPool.filter { it.taskSize != task.taskSize }
-        val targetIndex = dragPreviewIndex
-            ?: poolInsertionIndexForTop(task.taskSize, task.id, draggedTopPx)
-        sameSize.add(targetIndex.coerceIn(0, sameSize.size), task)
-
-        val ordered = if (task.taskSize == TaskSize.BIG) {
-            sameSize + otherSize
-        } else {
-            otherSize + sameSize
-        }
-        val reordered = ordered.mapIndexed { index, item -> item.copy(orderIndex = index) }
-        val finalOrder = reordered.map { it.id }
-        if (finalOrder != localPool.map { it.id }) {
-            localPool = reordered
-            pendingPersistedOrder = finalOrder
-            viewModel.reorderPool(finalOrder)
-        }
-    }
-
-    suspend fun showUndoSnackbar(message: String, undo: () -> Unit) {
-        snackbarHostState.currentSnackbarData?.dismiss()
-        val result = withTimeoutOrNull(15_000L) {
-            snackbarHostState.showSnackbar(
-                message = message,
-                actionLabel = "UNDO",
-                withDismissAction = false,
-                duration = SnackbarDuration.Indefinite
-            )
-        }
-        if (result == SnackbarResult.ActionPerformed) undo()
-    }
+    val bigPool = localPool.filter { it.taskSize == TaskSize.BIG }
+    val smallPool = localPool.filter { it.taskSize == TaskSize.SMALL }
+    val allTasks = overdueTasks + listOfNotNull(mandatory) + bonusTasks + localPool
+    val editing = allTasks.firstOrNull { it.id == editingId }
 
     fun deleteWithUndo(task: Task) {
-        val previousQueuedTomorrowId = queuedTomorrowId
+        if (task.slot == 0 && viewModel.isTodayLocked()) return
+        val previousQueue = queuedTomorrowId
         val job = viewModel.deleteTask(task)
         scope.launch {
             job.join()
-            showUndoSnackbar("Task deleted") {
-                viewModel.undoDelete(task, previousQueuedTomorrowId)
+            showTaskUndo(snackbarHostState, context.getString(R.string.task_deleted), context.getString(R.string.undo)) {
+                viewModel.undoDelete(task, previousQueue)
             }
         }
     }
+    val completeWithUndo = rememberCompleteWithUndo(viewModel, snackbarHostState)
 
-    fun completeWithUndo(task: Task) {
-        val previousQueuedTomorrowId = queuedTomorrowId
-        val previousDayCompletedEpochDay = viewModel.settings.dayCompletedEpochDay
-        val previousStreakCount = viewModel.settings.streakCount
-        val previousStreakLastCompletedEpochDay = viewModel.settings.streakLastCompletedEpochDay
-        val job = viewModel.completeFromList(task.id)
+    fun updatePreview(drag: FloatingTask) {
+        if (drag.released) return
+        val todayBounds = mandatory?.let { placements[it.id]?.bounds }
+        if (drag.task.taskSize == TaskSize.BIG && !todayLocked && todayBounds != null &&
+            drag.top < todayBounds.center.y) {
+            drag.destination = "today"
+            drag.targetIndex = 0
+            return
+        }
+        // An active task stays in its own section until it reaches the backlog.
+        val firstPoolTop = localPool.mapNotNull { placements[it.id]?.bounds?.top }.minOrNull()
+        if (drag.origin.section != "pool" && firstPoolTop != null && drag.top < firstPoolTop - spacingPx) {
+            drag.destination = drag.origin.section
+            drag.targetIndex = drag.origin.index
+            return
+        }
+        drag.destination = "pool"
+        val candidates = localPool.filter { it.taskSize == drag.task.taskSize && it.id != drag.task.id }
+        val visibleIds = listState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? Long }.toSet()
+        val centers = candidates.mapIndexedNotNull { index, task ->
+            placements[task.id]?.takeIf { task.id in visibleIds }?.let { index to it.bounds.center.y }
+        }
+        drag.targetIndex = insertionIndexAt(drag.top + drag.origin.bounds.height / 2f, centers,
+            drag.targetIndex.coerceIn(0, candidates.size))
+    }
+    val currentUpdatePreview by rememberUpdatedState<(FloatingTask) -> Unit>({ updatePreview(it) })
+
+    fun finishDrag(cancelled: Boolean) {
+        val drag = floating ?: return
+        if (drag.released) return
+        autoScrollJob?.cancel()
+        drag.released = true
+        if (cancelled) {
+            drag.destination = drag.origin.section
+            drag.targetIndex = drag.origin.index
+        }
+        val destination = drag.destination
+        var expectedIndex = drag.targetIndex
+        val mutation = if (cancelled || destination == drag.origin.section && destination != "pool") null
+        else if (destination == "today") {
+            viewModel.replaceTodayWith(drag.task.id)
+        } else if (drag.origin.section == "today") {
+            viewModel.moveTodayToBacklogAt(drag.task.id, drag.targetIndex)
+        } else if (drag.origin.section == "bonus") {
+            viewModel.moveBonusToBacklogAt(drag.task.id, drag.targetIndex)
+        } else {
+            val sameSize = localPool.filter { it.taskSize == drag.task.taskSize && it.id != drag.task.id }.toMutableList()
+            expectedIndex = drag.targetIndex.coerceIn(0, sameSize.size)
+            sameSize.add(expectedIndex, drag.task)
+            val otherSize = localPool.filter { it.taskSize != drag.task.taskSize }
+            localPool = (if (drag.task.taskSize == TaskSize.BIG) sameSize + otherSize else otherSize + sameSize)
+                .mapIndexed { index, task -> task.copy(orderIndex = index) }
+            pendingOrder = localPool.map { it.id }
+            viewModel.reorderPool(pendingOrder!!)
+        }
         scope.launch {
-            job.join()
-            showUndoSnackbar("Task completed") {
-                viewModel.undoCompletion(
-                    task = task,
-                    previousQueuedTomorrowTaskId = previousQueuedTomorrowId,
-                    previousDayCompletedEpochDay = previousDayCompletedEpochDay,
-                    previousStreakCount = previousStreakCount,
-                    previousStreakLastCompletedEpochDay = previousStreakLastCompletedEpochDay
-                )
+            try {
+                mutation?.join()
+                // The floating card survives lazy item disposal and database emissions.
+                // Wait for the destination layout, never animate from the old slot.
+                val target = withTimeoutOrNull(350) {
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    var found: TaskPlacement? = null
+                    while (found == null) {
+                        val visible = listState.layoutInfo.visibleItemsInfo.any { it.key == drag.task.id }
+                        found = placements[drag.task.id]?.takeIf {
+                            visible && it.section == destination && (destination != "pool" || it.index == expectedIndex)
+                        }
+                        if (found == null) withFrameNanos { }
+                    }
+                    found
+                }
+                if (target != null) {
+                    val releaseTop = drag.top
+                    animate(0f, 1f, animationSpec = spring(dampingRatio = 1f, stiffness = 650f)) { progress, _ ->
+                        val destinationTop = placements[drag.task.id]?.bounds?.top ?: target.bounds.top
+                        drag.top = releaseTop + (destinationTop - releaseTop) * progress
+                    }
+                } else {
+                    // Offscreen destinations do not fly back through the viewport.
+                    animate(1f, 0f, animationSpec = tween(100)) { value, _ -> drag.alpha = value }
+                }
+            } finally {
+                if (floating === drag) floating = null
             }
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.tasks)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back to Home")
-                    }
+    val startDrag by rememberUpdatedState<(Offset) -> Unit>({ point ->
+        if (floating == null) {
+            val rootPoint = point + listBounds.topLeft
+            val hit = placements.entries.firstOrNull { (id, placement) ->
+                listState.layoutInfo.visibleItemsInfo.any { it.key == id } && placement.bounds.contains(rootPoint)
+            }
+            val task = hit?.key?.let { id -> allTasks.firstOrNull { it.id == id } }
+            if (task != null && hit != null && task.overdueSinceEpochDay == null && !(task.slot == 0 && todayLocked)) {
+                val tag = when (hit.value.section) {
+                    "today" -> context.getString(R.string.today_upper)
+                    "bonus" -> context.getString(R.string.bonus_upper)
+                    else -> if (task.taskSize == TaskSize.BIG) queueDateLabel(context, hit.value.index, clock.toLocalDate()) else null
                 }
-            )
-        },
-        snackbarHost = {
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier.padding(bottom = 12.dp)
-            ) { data ->
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.inverseSurface,
-                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                    shadowElevation = 6.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            data.visuals.message,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        data.visuals.actionLabel?.let { label ->
-                            TextButton(
-                                onClick = { data.performAction() },
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.inversePrimary
-                                )
-                            ) {
-                                Text(label, fontWeight = FontWeight.Bold)
-                            }
+                val drag = FloatingTask(task, hit.value, tag)
+                floating = drag
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                autoScrollJob = scope.launch {
+                    var previousFrame = withFrameNanos { it }
+                    while (isActive && floating === drag && !drag.released) {
+                        val frame = withFrameNanos { it }
+                        val seconds = ((frame - previousFrame) / 1_000_000_000f).coerceAtMost(0.032f)
+                        previousFrame = frame
+                        val center = drag.top + drag.origin.bounds.height / 2f
+                        val edge = when {
+                            center < listBounds.top + edgeZonePx -> -(1f - (center - listBounds.top) / edgeZonePx).coerceIn(0f, 1f)
+                            center > listBounds.bottom - edgeZonePx -> (1f - (listBounds.bottom - center) / edgeZonePx).coerceIn(0f, 1f)
+                            else -> 0f
+                        }
+                        if (edge != 0f) {
+                            listState.scrollBy(edge * maxScrollPxPerSecond * seconds)
+                            withFrameNanos { }
+                            currentUpdatePreview(drag)
                         }
                     }
                 }
-            }
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { showAdd = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Add task")
             }
         }
-    ) { padding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .onGloballyPositioned { coordinates ->
-                    listBounds = coordinates.boundsInRoot()
-                }
-                .padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (overdueTasks.isNotEmpty()) {
-                item { SectionTitle(stringResource(R.string.overdue)) }
-                items(overdueTasks, key = { "overdue-${it.id}" }) { task ->
-                    SwipeableTaskRow(
-                        modifier = Modifier.onGloballyPositioned { coordinates ->
-                            taskCardBounds[task.id] = coordinates.boundsInRoot()
-                        },
-                        task = task,
-                        tag = stringResource(R.string.overdue_upper),
-                        onEdit = { editing = task },
-                        onDelete = { deleteWithUndo(task) },
-                        onComplete = {
-                            val yesterday = LocalDate.now().minusDays(1).toEpochDay()
-                            if (task.overdueSinceEpochDay == yesterday) {
-                                backdateTask = task
-                            } else {
-                                completeWithUndo(task)
-                            }
-                        }
-                    )
-                }
-                item { Spacer(Modifier.height(6.dp)) }
-            }
+    })
+    val moveDrag by rememberUpdatedState<(Float) -> Unit>({ delta ->
+        floating?.takeIf { !it.released }?.let { drag -> drag.top += delta; updatePreview(drag) }
+    })
+    val endDrag by rememberUpdatedState<(Boolean) -> Unit>({ finishDrag(it) })
+    DisposableEffect(Unit) { onDispose { autoScrollJob?.cancel() } }
 
-            displayedMandatory?.let { task ->
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+    @Composable
+    fun TaskCard(task: Task, section: String, index: Int = 0, tag: String? = null) {
+        val drag = floating
+        val hidden = drag?.task?.id == task.id
+        val originIndex = if (drag?.origin?.section == "pool") drag.origin.index else -1
+        val shift = if (drag != null && !drag.released && section == "pool" && drag.destination == "pool" &&
+            drag.task.taskSize == task.taskSize && !hidden) {
+            previewDisplacement(originIndex, drag.targetIndex, index, drag.origin.bounds.height + spacingPx)
+        } else 0f
+        val preview by animateFloatAsState(shift, tween(120), label = "reorder-gap")
+        Box(Modifier.fillMaxWidth().testTag("task-card-${task.id}").onGloballyPositioned {
+            placements[task.id] = TaskPlacement(it.boundsInRoot(), section, index)
+        }) {
+            SwipeableTaskRow(
+                modifier = Modifier.graphicsLayer {
+                    alpha = if (hidden) 0f else 1f
+                    translationY = if (drag != null && !drag.released) preview else 0f
+                }.then(if (hidden) Modifier.clearAndSetSemantics { } else Modifier),
+                task = task,
+                tag = tag,
+                weekend = section == "pool" && task.taskSize == TaskSize.BIG && isWeekendQueueDate(clock.toLocalDate(), index),
+                onEdit = { if (!(task.slot == 0 && todayLocked)) editingId = task.id },
+                onDelete = { deleteWithUndo(task) },
+                onComplete = {
+                    if (task.overdueSinceEpochDay == clock.toLocalDate().minusDays(1).toEpochDay()) backdateTask = task
+                    else completeWithUndo(task)
+                },
+                allowDelete = !(task.slot == 0 && todayLocked),
+                onMakeToday = if (section == "pool" && task.taskSize == TaskSize.BIG && !todayLocked) {
+                    { viewModel.chooseToday(task.id) }
+                } else null,
+                onMakeBonus = if (section == "pool" && task.taskSize == TaskSize.SMALL && bonusTasks.size < 2) {
+                    { viewModel.activateBonusFromPool(task.id) }
+                } else null
+            )
+        }
+    }
+
+    Box(Modifier.fillMaxSize().onGloballyPositioned { rootBounds = it.boundsInRoot() }) {
+        Scaffold(
+            topBar = { TopAppBar(title = { Text(stringResource(R.string.tasks)) }, navigationIcon = {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, stringResource(R.string.back)) }
+            }) },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            floatingActionButton = { FloatingActionButton(onClick = { showAdd = true }) {
+                Icon(Icons.Default.Add, stringResource(R.string.add_task))
+            } }
+        ) { padding ->
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.padding(padding).fillMaxSize()
+                    .onGloballyPositioned { listBounds = it.boundsInRoot() }
+                    .pointerInput(Unit) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { startDrag(it) },
+                            onDragEnd = { endDrag(false) },
+                            onDragCancel = { endDrag(true) }
+                        ) { change, amount ->
+                            change.consume()
+                            moveDrag(amount.y)
+                        }
+                    }.padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (overdueTasks.isNotEmpty()) {
+                    item { SectionTitle(stringResource(R.string.overdue)) }
+                    items(overdueTasks, key = { it.id }) { TaskCard(it, "overdue", tag = stringResource(R.string.overdue_upper)) }
+                }
+                mandatory?.let { task ->
+                    item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         SectionTitle(stringResource(R.string.today))
                         if (todayLocked) StatusPill(stringResource(R.string.locked_upper))
-                    }
+                    } }
+                    item(key = task.id) { TaskCard(task, "today", tag = stringResource(R.string.today_upper)) }
                 }
-                item(key = "today-${task.id}") {
-                    SwipeableTaskRow(
-                        modifier = (if (draggingTaskId == task.id) Modifier.zIndex(10f) else Modifier)
-                            .onGloballyPositioned { coordinates ->
-                                todayCardTopPx = coordinates.positionInRoot().y
-                                taskCardBounds[task.id] = coordinates.boundsInRoot()
-                            },
-                        task = task,
-                        tag = stringResource(R.string.today_upper),
-                        onEdit = { if (!todayLocked) editing = task },
-                        onDelete = { deleteWithUndo(task) },
-                        onComplete = { completeWithUndo(task) },
-                        allowDelete = !todayLocked,
-                        onMakeBonus = null,
-                        dragHint = if (!todayLocked) stringResource(R.string.drag_to_next_tasks) else stringResource(R.string.today_locked),
-                        dragCompensation = if (draggingTaskId == task.id) dragScrollCompensation else 0f,
-                        onDragMove = if (!todayLocked) { effectiveOffsetY ->
-                            val bounds = taskCardBounds[task.id]
-                            val headerTop = backlogHeaderTopPx
-                            if (bounds != null) {
-                                val draggedTop = bounds.top + effectiveOffsetY
-                                maybeAutoScroll(draggedTop + bounds.height / 2f)
-                                if (headerTop != null && draggedTop >= headerTop) {
-                                    dragPreviewIndex = poolInsertionIndexForTop(TaskSize.BIG, null, draggedTop)
-                                    dragOriginalIndex = -1
-                                    draggingTaskSize = TaskSize.BIG
-                                } else {
-                                    dragPreviewIndex = null
-                                }
-                            }
-                        } else null,
-                        onDragRelease = if (!todayLocked) { offsetY ->
-                            val startTop = taskCardBounds[task.id]?.top ?: todayCardTopPx
-                            val headerTop = backlogHeaderTopPx
-                            if (startTop != null && headerTop != null) {
-                                val draggedTop = startTop + offsetY
-                                if (draggedTop >= headerTop) {
-                                    val insertionIndex = dragPreviewIndex
-                                        ?: poolInsertionIndexForTop(TaskSize.BIG, null, draggedTop)
-                                    viewModel.moveTodayToBacklogAt(task.id, insertionIndex)
-                                }
-                            }
-                        } else null,
-                        onDraggingStateChanged = { isDragging ->
-                            if (isDragging) {
-                                draggingTaskId = task.id
-                                draggingTaskSize = TaskSize.BIG
-                                dragOriginalIndex = -1
-                                dragPreviewIndex = null
-                                dragScrollCompensation = 0f
-                            } else {
-                                draggingTaskId = null
-                                clearDragPreview()
-                            }
-                        }
-                    )
+                if (bonusTasks.isNotEmpty()) {
+                    item { SectionTitle(stringResource(R.string.bonus_today)) }
+                    items(bonusTasks, key = { it.id }) { TaskCard(it, "bonus", tag = stringResource(R.string.bonus_upper)) }
                 }
-                item { Spacer(Modifier.height(6.dp)) }
-            }
-
-            if (bonusTasks.isNotEmpty()) {
-                item { SectionTitle(stringResource(R.string.bonus_today)) }
-                items(bonusTasks, key = { "bonus-${it.id}" }) { task ->
-                    SwipeableTaskRow(
-                        modifier = Modifier.onGloballyPositioned { coordinates ->
-                            taskCardBounds[task.id] = coordinates.boundsInRoot()
-                        },
-                        task = task,
-                        tag = stringResource(R.string.bonus_upper),
-                        onEdit = { editing = task },
-                        onDelete = { deleteWithUndo(task) },
-                        onComplete = { completeWithUndo(task) },
-                        dragHint = stringResource(R.string.drag_to_bonus_backlog),
-                        dragCompensation = if (draggingTaskId == task.id) dragScrollCompensation else 0f,
-                        onDragMove = { effectiveOffsetY ->
-                            val bounds = taskCardBounds[task.id]
-                            val headerTop = backlogHeaderTopPx
-                            if (bounds != null) {
-                                val draggedTop = bounds.top + effectiveOffsetY
-                                maybeAutoScroll(draggedTop + bounds.height / 2f)
-                                if (headerTop != null && draggedTop >= headerTop) {
-                                    dragPreviewIndex = poolInsertionIndexForTop(TaskSize.SMALL, null, draggedTop)
-                                    dragOriginalIndex = -1
-                                    draggingTaskSize = TaskSize.SMALL
-                                } else {
-                                    dragPreviewIndex = null
-                                }
-                            }
-                        },
-                        onDragRelease = { offsetY ->
-                            val startTop = taskCardBounds[task.id]?.top
-                            val headerTop = backlogHeaderTopPx
-                            if (startTop != null && headerTop != null) {
-                                val draggedTop = startTop + offsetY
-                                if (draggedTop >= headerTop) {
-                                    val insertionIndex = dragPreviewIndex
-                                        ?: poolInsertionIndexForTop(TaskSize.SMALL, null, draggedTop)
-                                    viewModel.moveBonusToBacklogAt(task.id, insertionIndex)
-                                }
-                            }
-                        },
-                        onDraggingStateChanged = { isDragging ->
-                            if (isDragging) {
-                                draggingTaskId = task.id
-                                draggingTaskSize = TaskSize.SMALL
-                                dragOriginalIndex = -1
-                                dragPreviewIndex = null
-                                dragScrollCompensation = 0f
-                            } else {
-                                draggingTaskId = null
-                                clearDragPreview()
-                            }
-                        }
-                    )
-                }
-                item { Spacer(Modifier.height(6.dp)) }
-            }
-
-            item {
-                Column(
-                    modifier = Modifier.onGloballyPositioned { coordinates ->
-                        backlogHeaderTopPx = coordinates.positionInRoot().y
-                    }
-                ) {
+                item { Column {
                     SectionTitle(stringResource(R.string.next_tasks))
-                    Text(
-                        stringResource(R.string.next_tasks_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text(stringResource(R.string.next_tasks_description), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } }
+                if (bigPool.isEmpty()) item { Text(stringResource(R.string.no_big_tasks)) }
+                itemsIndexed(bigPool, key = { _, task -> task.id }) { index, task ->
+                    TaskCard(task, "pool", index, queueDateLabel(context, index, clock.toLocalDate()))
                 }
-            }
-
-            if (bigPool.isEmpty()) {
-                item {
-                    Text(
-                        stringResource(R.string.no_big_tasks),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 10.dp)
-                    )
-                }
-            }
-
-            itemsIndexed(bigPool, key = { _, task -> "big-${task.id}" }) { index, task ->
-                val previewShift by animateFloatAsState(
-                    targetValue = previewShiftFor(TaskSize.BIG, index, task.id),
-                    animationSpec = tween(durationMillis = 120),
-                    label = "big-preview-${task.id}"
-                )
-                val baseItemModifier = (if (draggingTaskId == task.id) {
-                    Modifier.zIndex(10f)
-                } else {
-                    Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 170))
-                }).graphicsLayer { translationY = previewShift }
-                val itemModifier = baseItemModifier.onGloballyPositioned { coordinates ->
-                    taskCardBounds[task.id] = coordinates.boundsInRoot()
-                    if (index == 0 && draggingTaskId != task.id) {
-                        firstBacklogCardTopPx = coordinates.positionInRoot().y
-                    }
-                }
-
-                SwipeableTaskRow(
-                    modifier = itemModifier,
-                    task = task,
-                    tag = scheduledQueueTag(index),
-                    onEdit = { editing = task },
-                    onDelete = { deleteWithUndo(task) },
-                    onComplete = { completeWithUndo(task) },
-                    onMakeToday = if (!todayLocked) {
-                        { viewModel.chooseToday(task.id) }
-                    } else null,
-                    onMakeBonus = null,
-                    dragHint = stringResource(R.string.drag_to_reorder),
-                    dragCompensation = if (draggingTaskId == task.id) dragScrollCompensation else 0f,
-                    onDragMove = { effectiveOffsetY ->
-                        updatePoolDragPreview(task, effectiveOffsetY, index)
-                    },
-                    onDragRelease = { offsetY ->
-                        val startTop = taskCardBounds[task.id]?.top
-                        if (startTop != null) {
-                            val draggedTop = startTop + offsetY
-                            val todayTop = todayCardTopPx
-                            if (
-                                !todayLocked &&
-                                displayedMandatory != null &&
-                                todayTop != null &&
-                                draggedTop <= todayTop
-                            ) {
-                                viewModel.replaceTodayWith(task.id)
-                            } else {
-                                reorderPoolOnRelease(task, draggedTop)
-                            }
-                        }
-                    },
-                    onDraggingStateChanged = { isDragging ->
-                        if (isDragging) {
-                            draggingTaskId = task.id
-                            draggingTaskSize = TaskSize.BIG
-                            dragOriginalIndex = index
-                            dragPreviewIndex = index
-                            dragScrollCompensation = 0f
-                        } else {
-                            draggingTaskId = null
-                            clearDragPreview()
-                        }
-                    }
-                )
-            }
-
-            item { Spacer(Modifier.height(6.dp)) }
-
-            item {
-                Column {
+                item { Column {
                     SectionTitle(stringResource(R.string.bonus_backlog))
-                    Text(
-                        stringResource(R.string.bonus_backlog_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                    Text(stringResource(R.string.bonus_backlog_description), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } }
+                if (smallPool.isEmpty()) item { Text(stringResource(R.string.no_small_tasks)) }
+                itemsIndexed(smallPool, key = { _, task -> task.id }) { index, task -> TaskCard(task, "pool", index) }
             }
-
-            if (smallPool.isEmpty()) {
-                item {
-                    Text(
-                        stringResource(R.string.no_small_tasks),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 10.dp)
-                    )
-                }
-            }
-
-            itemsIndexed(smallPool, key = { _, task -> "small-${task.id}" }) { index, task ->
-                val previewShift by animateFloatAsState(
-                    targetValue = previewShiftFor(TaskSize.SMALL, index, task.id),
-                    animationSpec = tween(durationMillis = 120),
-                    label = "small-preview-${task.id}"
-                )
-                val baseItemModifier = (if (draggingTaskId == task.id) {
-                    Modifier.zIndex(10f)
-                } else {
-                    Modifier.animateItemPlacement(animationSpec = tween(durationMillis = 170))
-                }).graphicsLayer { translationY = previewShift }
-                SwipeableTaskRow(
-                    modifier = baseItemModifier.onGloballyPositioned { coordinates ->
-                        taskCardBounds[task.id] = coordinates.boundsInRoot()
-                    },
-                    task = task,
-                    tag = null,
-                    onEdit = { editing = task },
-                    onDelete = { deleteWithUndo(task) },
-                    onComplete = { completeWithUndo(task) },
-                    onMakeBonus = if (bonusTasks.size < 2) {
-                        { viewModel.activateBonusFromPool(task.id) }
-                    } else null,
-                    dragHint = stringResource(R.string.drag_to_reorder),
-                    dragCompensation = if (draggingTaskId == task.id) dragScrollCompensation else 0f,
-                    onDragMove = { effectiveOffsetY ->
-                        updatePoolDragPreview(task, effectiveOffsetY, index)
-                    },
-                    onDragRelease = { offsetY ->
-                        val startTop = taskCardBounds[task.id]?.top
-                        if (startTop != null) {
-                            reorderPoolOnRelease(task, startTop + offsetY)
-                        }
-                    },
-                    onDraggingStateChanged = { isDragging ->
-                        if (isDragging) {
-                            draggingTaskId = task.id
-                            draggingTaskSize = TaskSize.SMALL
-                            dragOriginalIndex = index
-                            dragPreviewIndex = index
-                            dragScrollCompensation = 0f
-                        } else {
-                            draggingTaskId = null
-                            clearDragPreview()
-                        }
-                    }
-                )
+        }
+        floating?.let { drag ->
+            Box(Modifier.width(with(density) { drag.origin.bounds.width.toDp() })
+                .graphicsLayer {
+                    translationX = drag.origin.bounds.left - rootBounds.left
+                    translationY = drag.top - rootBounds.top
+                    alpha = drag.alpha
+                    shadowElevation = with(density) { 8.dp.toPx() }
+                    shape = RoundedCornerShape(12.dp)
+                }.clearAndSetSemantics { this.testTag = "drag-overlay" }) {
+                TaskRow(task = drag.task, tag = drag.tag, onEdit = {},
+                    weekend = drag.origin.section == "pool" && drag.task.taskSize == TaskSize.BIG &&
+                        isWeekendQueueDate(clock.toLocalDate(), drag.origin.index),
+                    onMakeToday = if (drag.origin.section == "pool" && drag.task.taskSize == TaskSize.BIG && !todayLocked) ({}) else null,
+                    onMakeBonus = if (drag.origin.section == "pool" && drag.task.taskSize == TaskSize.SMALL && bonusTasks.size < 2) ({}) else null)
             }
         }
     }
@@ -725,7 +409,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
             defaultReminderMinute = viewModel.settings.defaultReminderMinute,
             onAddGroup = { viewModel.addCustomGroup(it) },
             onRemoveGroup = { viewModel.removeCustomGroup(it) },
-            onDismiss = { editing = null },
+            onDismiss = { editingId = null },
             onSave = { title, group, taskSize, comment, remOn, h, m ->
                 viewModel.updateTask(
                     task.copy(
@@ -740,7 +424,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                         reminderMinute = m
                     )
                 )
-                editing = null
+                editingId = null
             }
         )
     }
@@ -775,16 +459,6 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun scheduledQueueTag(index: Int): String = when (index) {
-    0 -> stringResource(R.string.tomorrow_upper)
-    1 -> stringResource(R.string.day_after_upper)
-    else -> LocalDate.now()
-        .plusDays(index.toLong() + 1L)
-        .format(DateTimeFormatter.ofPattern("dd-MMM", Locale.getDefault()))
-        .uppercase(Locale.getDefault())
-}
-
-@Composable
 private fun SectionTitle(text: String) {
     Text(
         text,
@@ -803,38 +477,29 @@ private fun SwipeableTaskRow(
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
     allowDelete: Boolean = true,
+    weekend: Boolean = false,
     onMakeToday: (() -> Unit)? = null,
     onMakeBonus: (() -> Unit)? = null,
-    dragHint: String? = null,
-    dragCompensation: Float = 0f,
-    onDragMove: ((Float) -> Unit)? = null,
-    onDragRelease: ((Float) -> Unit)? = null,
-    onDraggingStateChanged: (Boolean) -> Unit = {}
 ) {
-    var rowDragging by remember(task.id) { mutableStateOf(false) }
 
     val dismissState = rememberDismissState(
         confirmStateChange = { value ->
-            if (rowDragging) {
-                false
-            } else {
-                when (value) {
+            when (value) {
                     DismissValue.DismissedToStart -> {
                         onDelete()
                         true
                     }
                     DismissValue.DismissedToEnd -> {
                         onComplete()
-                        true
+                        false
                     }
                     DismissValue.Default -> true
-                }
             }
         }
     )
 
     SwipeToDismiss(
-        modifier = modifier.zIndex(if (rowDragging) 10f else 0f),
+        modifier = modifier,
         state = dismissState,
         directions = if (allowDelete) {
             setOf(DismissDirection.StartToEnd, DismissDirection.EndToStart)
@@ -843,9 +508,9 @@ private fun SwipeableTaskRow(
         },
         background = {
             val direction = dismissState.dismissDirection
-            if (direction != null && !rowDragging) {
+            if (direction != null) {
                 val isComplete = direction == DismissDirection.StartToEnd
-                val bg = if (isComplete) Color(0xFFD7F3DF) else Color(0xFFFFD8D8)
+                val bg = if (isComplete) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.errorContainer
                 val icon = if (isComplete) Icons.Default.Check else Icons.Default.Delete
                 val label = stringResource(if (isComplete) R.string.complete else R.string.delete)
                 Row(
@@ -856,11 +521,11 @@ private fun SwipeableTaskRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = if (isComplete) Arrangement.Start else Arrangement.End
                 ) {
-                    if (!isComplete) Text(label, fontWeight = FontWeight.SemiBold)
+                    if (!isComplete) Text(label, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
                     if (!isComplete) Spacer(Modifier.width(8.dp))
-                    Icon(icon, contentDescription = label)
+                    Icon(icon, contentDescription = label, tint = if (isComplete) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onErrorContainer)
                     if (isComplete) Spacer(Modifier.width(8.dp))
-                    if (isComplete) Text(label, fontWeight = FontWeight.SemiBold)
+                    if (isComplete) Text(label, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
             } else {
                 Box(Modifier.fillMaxSize())
@@ -870,17 +535,10 @@ private fun SwipeableTaskRow(
             TaskRow(
                 task = task,
                 tag = tag,
+                weekend = weekend,
                 onEdit = onEdit,
                 onMakeToday = onMakeToday,
                 onMakeBonus = onMakeBonus,
-                dragHint = dragHint,
-                dragCompensation = dragCompensation,
-                onDragMove = onDragMove,
-                onDragRelease = onDragRelease,
-                onDraggingChanged = { isDragging ->
-                    rowDragging = isDragging
-                    onDraggingStateChanged(isDragging)
-                }
             )
         }
     )
@@ -891,13 +549,9 @@ private fun TaskRow(
     task: Task,
     tag: String?,
     onEdit: () -> Unit,
+    weekend: Boolean = false,
     onMakeToday: (() -> Unit)? = null,
     onMakeBonus: (() -> Unit)? = null,
-    dragHint: String? = null,
-    dragCompensation: Float = 0f,
-    onDragMove: ((Float) -> Unit)? = null,
-    onDragRelease: ((Float) -> Unit)? = null,
-    onDraggingChanged: (Boolean) -> Unit = {}
 ) {
     val color = remember(task.colorHex) {
         try {
@@ -908,64 +562,11 @@ private fun TaskRow(
     }
 
     val cardColor = lerp(MaterialTheme.colorScheme.surface, color, 0.10f)
-    val haptics = LocalHapticFeedback.current
-    val density = LocalDensity.current
-    val dragElevationPx = with(density) { 10.dp.toPx() }
-    var dragOffset by remember(task.id) { mutableFloatStateOf(0f) }
-    var dragging by remember(task.id) { mutableStateOf(false) }
-    val currentOnDragMove by rememberUpdatedState(onDragMove)
-    val currentOnDragRelease by rememberUpdatedState(onDragRelease)
-    val currentDragCompensation by rememberUpdatedState(dragCompensation)
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer(
-                translationY = if (dragging) dragOffset + currentDragCompensation else 0f,
-                scaleX = if (dragging) 1.018f else 1f,
-                scaleY = if (dragging) 1.018f else 1f,
-                shadowElevation = if (dragging) dragElevationPx else 0f,
-                shape = RoundedCornerShape(12.dp)
-            )
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (dragging) lerp(MaterialTheme.colorScheme.surface, color, 0.16f) else cardColor,
-                RoundedCornerShape(12.dp)
-            )
-            .then(
-                if (onDragRelease != null) {
-                    Modifier.pointerInput(task.id) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                dragOffset = 0f
-                                dragging = true
-                                onDraggingChanged(true)
-                            },
-                            onDragCancel = {
-                                dragging = false
-                                dragOffset = 0f
-                                onDraggingChanged(false)
-                            },
-                            onDragEnd = {
-                                val finalOffset = dragOffset + currentDragCompensation
-                                currentOnDragRelease?.invoke(finalOffset)
-                                dragging = false
-                                dragOffset = 0f
-                                onDraggingChanged(false)
-                            }
-                        ) { change, dragAmount ->
-                            change.consume()
-                            // The card itself follows the finger continuously. No task
-                            // membership or list order is mutated until onDragEnd.
-                            dragOffset += dragAmount.y
-                            currentOnDragMove?.invoke(dragOffset + currentDragCompensation)
-                        }
-                    }
-                } else {
-                    Modifier
-                }
-            )
+            .background(cardColor, RoundedCornerShape(12.dp))
             .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1017,7 +618,7 @@ private fun TaskRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            if (tag != null) StatusPill(tag)
+            if (tag != null) StatusPill(tag, weekend)
 
             if (onMakeToday != null) {
                 IconButton(onClick = onMakeToday, modifier = Modifier.size(38.dp)) {
@@ -1043,10 +644,10 @@ private fun TaskRow(
 }
 
 @Composable
-private fun StatusPill(tag: String) {
+private fun StatusPill(tag: String, weekend: Boolean = false) {
     val overdue = tag == stringResource(R.string.overdue_upper)
-    val content = if (overdue) Color(0xFFB4233A) else MaterialTheme.colorScheme.primary
-    val container = if (overdue) Color(0xFFFFE7EC) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    val content = if (overdue || weekend) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val container = if (overdue) MaterialTheme.colorScheme.errorContainer else content.copy(alpha = 0.10f)
     Surface(
         color = container,
         shape = RoundedCornerShape(50)

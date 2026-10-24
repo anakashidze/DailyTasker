@@ -7,6 +7,8 @@ import android.content.Intent
 import android.os.Build
 import com.tasknext.app.data.SettingsStore
 import com.tasknext.app.data.Task
+import java.time.LocalDateTime
+import java.time.ZoneId
 import java.util.Calendar
 import kotlin.math.max
 
@@ -30,11 +32,16 @@ object NotificationScheduler {
 
         val hour = task.reminderHour ?: defaultHour
         val minute = task.reminderMinute ?: defaultMinute
+        val time = taskReminderTime(hour, minute) ?: run {
+            val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            manager.cancel(taskPendingIntent(context, task.id, ACTION_REMINDER))
+            return
+        }
         scheduleTaskAt(
             context = context,
             taskId = task.id,
             title = task.title,
-            triggerAtMillis = nextOccurrence(hour, minute),
+            triggerAtMillis = time.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
             action = ACTION_REMINDER
         )
     }
@@ -124,6 +131,11 @@ object NotificationScheduler {
     private fun cancelDailyAction(context: Context, action: String, requestCode: Int) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarmManager.cancel(dailyPendingIntent(context, action, requestCode))
+    }
+
+    internal fun taskReminderTime(hour: Int, minute: Int, now: LocalDateTime = LocalDateTime.now()): LocalDateTime? {
+        val todayTime = now.toLocalDate().atTime(hour.coerceIn(0, 23), minute.coerceIn(0, 59))
+        return todayTime.takeIf { it.isAfter(now) }
     }
 
     private fun nextOccurrence(hour: Int, minute: Int): Long {

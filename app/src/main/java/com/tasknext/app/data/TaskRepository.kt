@@ -172,13 +172,14 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         previousStreakLastCompletedEpochDay: Long
     ) {
         dao.undoCompletion(task)
-        if (task.slot == 0) {
-            dao.deleteDailyOutcome(todayEpochDay())
+        val today = todayEpochDay()
+        if (task.slot == 0 && dao.getDailyOutcome(today)?.sourceTaskId == task.id) {
+            dao.deleteDailyOutcome(today)
         }
         settings.queuedTomorrowTaskId = previousQueuedTomorrowTaskId
-        settings.dayCompletedEpochDay = previousDayCompletedEpochDay
-        settings.streakCount = previousStreakCount
-        settings.streakLastCompletedEpochDay = previousStreakLastCompletedEpochDay
+        settings.dayCompletedEpochDay = if (dao.getDailyOutcome(today)?.status in
+            setOf(DailyOutcomeStatus.COMPLETED, DailyOutcomeStatus.REST)) today else -1L
+        recalculateStreakCacheFromLedger()
     }
 
     suspend fun reorderPool(orderedIds: List<Long>) {
@@ -211,10 +212,6 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         val previousDayWasCompleted = previousActiveDay != -1L &&
             settings.dayCompletedEpochDay == previousActiveDay
 
-        if (settings.streakLastCompletedEpochDay < today - 1L) {
-            settings.streakCount = 0
-        }
-
         val allBeforeRollover = dao.getAllOnce()
         val previousToday = allBeforeRollover.firstOrNull {
             !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
@@ -241,6 +238,7 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         settings.dayCompletedEpochDay = -1L
         settings.queuedTomorrowTaskId = -1L
         settings.lastActiveEpochDay = today
+        recalculateStreakCacheFromLedger()
     }
 
     private suspend fun recalculateStreakCacheFromLedger() {
@@ -302,15 +300,11 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         return true
     }
 
-    fun currentStreakCount(): Int {
-        val today = todayEpochDay()
-        if (settings.streakLastCompletedEpochDay == -1L &&
-            settings.dayCompletedEpochDay == today
-        ) {
-            settings.streakCount = 1
-            settings.streakLastCompletedEpochDay = today
-        }
-        return if (settings.streakLastCompletedEpochDay < today - 1L) 0 else settings.streakCount
+    suspend fun currentStreakCount(): Int {
+        // REST preserves continuity without adding a completed day. The last
+        // completion alone cannot tell whether intervening days were protected.
+        recalculateStreakCacheFromLedger()
+        return settings.streakCount
     }
 
     fun isDayComplete(): Boolean = settings.dayCompletedEpochDay == todayEpochDay()
@@ -419,15 +413,15 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     suspend fun replaceMandatoryWith(
         taskId: Long,
         backlogOrderAfterSwap: List<Long>? = null
-    ) {
-        if (isTodayLocked()) return
-        val selected = dao.getById(taskId) ?: return
+    ): Boolean {
+        if (isTodayLocked()) return false
+        val selected = dao.getById(taskId) ?: return false
         if (
             selected.taskSize != TaskSize.BIG ||
             selected.slot != null ||
             selected.isArchived ||
             selected.overdueSinceEpochDay != null
-        ) return
+        ) return false
 
         val selectedOrder = selected.orderIndex
         val current = dao.getAllOnce().firstOrNull { it.slot == 0 && !it.isArchived }
@@ -447,6 +441,7 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
             settings.queuedTomorrowTaskId = -1L
         }
         settings.dayCompletedEpochDay = -1L
+        return true
     }
 
     suspend fun moveTodayToBacklogAt(taskId: Long, insertionIndex: Int): Long? {

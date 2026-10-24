@@ -1,6 +1,12 @@
 package com.tasknext.app.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -31,6 +37,9 @@ fun SettingsScreen(
     onLanguageChanged: (String) -> Unit = {}
 ) {
     val settings = viewModel.settings
+    val context = LocalContext.current
+    val notificationAccess = rememberNotificationAvailability()
+    var showRestInfo by remember { mutableStateOf(false) }
 
     var notificationsEnabled by remember { mutableStateOf(settings.notificationsEnabled) }
     var defaultHour by remember { mutableIntStateOf(settings.defaultReminderHour) }
@@ -91,16 +100,18 @@ fun SettingsScreen(
             ) {
                 CompactValueRow(
                     label = stringResource(R.string.today_lock_time),
-                    value = "%02d:%02d".format(lockHour, lockMinute),
+                    value = formatAppTime(context, lockHour, lockMinute),
                     onValueClick = { showLockTimePicker = true }
                 )
                 Text(
                     stringResource(R.string.today_lock_description),
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 2.dp, end = 2.dp, bottom = 2.dp)
                 )
             }
+
+            TextButton(onClick = { showRestInfo = true }) { Text(stringResource(R.string.rest_credits_help)) }
 
             CompactSection(
                 title = stringResource(R.string.settings_notifications)
@@ -115,11 +126,19 @@ fun SettingsScreen(
                     }
                 )
 
+                if (notificationsEnabled && !notificationAccess) {
+                    Text(stringResource(R.string.notifications_blocked), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = {
+                        context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                    }) { Text(stringResource(R.string.open_android_settings)) }
+                }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
 
                 CompactValueRow(
                     label = stringResource(R.string.default_reminder_time),
-                    value = "%02d:%02d".format(defaultHour, defaultMinute),
+                    value = formatAppTime(context, defaultHour, defaultMinute),
                     onValueClick = { showDefaultTimePicker = true },
                     enabled = notificationsEnabled
                 )
@@ -137,7 +156,7 @@ fun SettingsScreen(
                 CompactNotificationRow(
                     label = stringResource(R.string.plan_tomorrow_reminder),
                     checked = planEnabled,
-                    time = "%02d:%02d".format(planHour, planMinute),
+                    time = formatAppTime(context, planHour, planMinute),
                     enabled = notificationsEnabled,
                     onToggle = {
                         planEnabled = it
@@ -150,7 +169,7 @@ fun SettingsScreen(
                 CompactNotificationRow(
                     label = stringResource(R.string.streak_risk_reminder),
                     checked = streakReminderEnabled,
-                    time = "%02d:%02d".format(streakHour, streakMinute),
+                    time = formatAppTime(context, streakHour, streakMinute),
                     enabled = notificationsEnabled,
                     onToggle = {
                         streakReminderEnabled = it
@@ -198,7 +217,7 @@ fun SettingsScreen(
                         OutlinedButton(
                             onClick = { languageExpanded = true },
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.height(36.dp)
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Text(
                                 when (languageCode) {
@@ -237,6 +256,15 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(8.dp))
         }
+    }
+
+    if (showRestInfo) {
+        AlertDialog(
+            onDismissRequest = { showRestInfo = false },
+            title = { Text(stringResource(R.string.rest_credits_help)) },
+            text = { Text(stringResource(R.string.rest_credits_explanation)) },
+            confirmButton = { TextButton(onClick = { showRestInfo = false }) { Text(stringResource(R.string.close)) } }
+        )
     }
 
     if (showSnoozeEditor) {
@@ -297,7 +325,7 @@ fun SettingsScreen(
             onDismiss = { showLockTimePicker = false },
             onConfirm = { hour, minute ->
                 val safeHour = hour.coerceAtMost(12)
-                val safeMinute = if (hour > 12) 0 else minute
+                val safeMinute = if (hour >= 12) 0 else minute
                 lockHour = safeHour
                 lockMinute = safeMinute
                 settings.todayLockHour = safeHour
@@ -377,7 +405,8 @@ private fun CompactToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 42.dp),
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -389,7 +418,7 @@ private fun CompactToggleRow(
         )
         Switch(
             checked = checked,
-            onCheckedChange = onChange,
+            onCheckedChange = null,
             enabled = enabled
         )
     }
@@ -405,7 +434,8 @@ private fun CompactValueRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 42.dp),
+            .heightIn(min = 48.dp)
+            .clickable(enabled = enabled, onClick = onValueClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -415,14 +445,9 @@ private fun CompactValueRow(
             else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f)
         )
-        TextButton(
-            onClick = onValueClick,
-            enabled = enabled,
-            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 2.dp),
-            modifier = Modifier.height(34.dp)
-        ) {
-            Text(value, style = MaterialTheme.typography.labelMedium)
-        }
+        Text(value, style = MaterialTheme.typography.labelMedium,
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 9.dp))
     }
 }
 
@@ -453,7 +478,7 @@ private fun CompactNotificationRow(
             onClick = onTimeClick,
             enabled = enabled && checked,
             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-            modifier = Modifier.height(32.dp)
+            modifier = Modifier.heightIn(min = 48.dp)
         ) {
             Text(time, style = MaterialTheme.typography.labelSmall)
         }

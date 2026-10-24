@@ -71,7 +71,7 @@
     <string name="add_new_group">Добавить новую группу</string>
     <string name="select_time">Выберите время</string>
     <string name="ok">ОК</string>
-    <string name="next_tasks_description">Большие задачи следуют расписанию справа. При перестановке задач даты остаются привязаны к позициям.</string>
+    <string name="next_tasks_description">Порядок задаёт план на следующие дни. При перестановке даты меняются. Выбирайте задачу на сегодня каждое утро — автоматически задачи не перемещаются.</string>
     <string name="no_big_tasks">Нет запланированных больших задач.</string>
     <string name="bonus_backlog_description">Маленькие задачи хранятся здесь. Нажмите звезду, чтобы добавить задачу в бонусы на сегодня.</string>
     <string name="no_small_tasks">Нет маленьких задач в бонусном списке.</string>
@@ -115,4 +115,23 @@
     <string name="notification_task_title">Пора: %1$s</string>
     <string name="notification_task_body">Нажмите, чтобы открыть TaskNext</string>
     <string name="notification_task_snooze">Отложить на %1$d мин</string>
+    <string name="undo">Отменить</string>
+    <string name="task_deleted">Задача удалена</string>
+    <string name="task_completed">Задача выполнена</string>
+    <string name="history_record_deleted">Запись удалена</string>
+    <string name="choose_today_task">Выбрать задачу на сегодня</string>
+    <string name="add_first_task">Добавить первую задачу</string>
+    <string name="choose_before">Выберите до %1$s</string>
+    <string name="today_locks_at">Блокируется в %1$s</string>
+    <string name="plan_next_tasks">Планировать следующие задачи</string>
+    <string name="reminder_off">Напоминание выключено</string>
+    <string name="reminder_today_at">Напоминание сегодня в %1$s</string>
+    <string name="reminder_time_passed">Время напоминания на сегодня прошло. Выберите более позднее время, если напоминание ещё нужно.</string>
+    <string name="reminder_when_active">Напоминания работают, когда задача добавлена в Сегодня или Бонус на сегодня.</string>
+    <string name="notifications_blocked">Уведомления заблокированы в настройках Android.</string>
+    <string name="open_android_settings">Открыть настройки Android</string>
+    <string name="use_default_reminder">Использовать время по умолчанию</string>
+    <string name="rest_credits_help">Как работают кредиты отдыха</string>
+    <string name="rest_credits_explanation">Выполните 5 маленьких задач за неделю, чтобы получить 1 кредит отдыха. Кредиты действуют с понедельника по воскресенье и не переносятся на следующую неделю. После времени блокировки можно использовать кредит, если задача на сегодня не выбрана и день ещё не завершён. День отдыха сохраняет серию, но не увеличивает её.</string>
+    <string name="task_sizes_explanation">Большая — главная задача дня. Маленькая — дополнительная бонусная задача.</string>
 </resources>

@@ -65,6 +65,8 @@ interface TaskDao {
     suspend fun deleteDailyOutcome(epochDay: Long)
 
     @Insert suspend fun insertLog(log: CompletionLog)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun restoreHistoryRecord(log: CompletionLog)
     @Query("SELECT * FROM completion_log WHERE id = :id LIMIT 1")
     suspend fun getHistoryById(id: Long): CompletionLog?
     @Query("SELECT COUNT(*) FROM completion_log WHERE eventType = 'RECOVERED' AND recoveredFromLogId = :sourceLogId")

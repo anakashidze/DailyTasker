@@ -67,7 +67,8 @@ class TodayTaskWidget : AppWidgetProvider() {
             )
             // Keep calendar rollover, Overdue state and streak correct even when the
             // widget refreshes before the user opens the app.
-            TaskRepository(dao, settings).rolloverDayIfNeeded()
+            val repository = TaskRepository(dao, settings)
+            repository.rolloverDayIfNeeded()
             val allTasks = dao.getAllOnce()
             val todayTask = allTasks.firstOrNull {
                 !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
@@ -79,11 +80,7 @@ class TodayTaskWidget : AppWidgetProvider() {
             val todayOutcome = dao.getDailyOutcome(todayEpochDay)
             val restToday = todayOutcome?.status == DailyOutcomeStatus.REST
             val dayComplete = settings.dayCompletedEpochDay == todayEpochDay
-            val streak = if (settings.streakLastCompletedEpochDay < todayEpochDay - 1L) {
-                0
-            } else {
-                settings.streakCount
-            }
+            val streak = repository.currentStreakCount()
 
             val openAppIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

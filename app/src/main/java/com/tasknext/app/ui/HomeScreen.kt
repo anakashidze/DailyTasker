@@ -5,6 +5,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -23,6 +25,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -77,17 +82,24 @@ fun HomeScreen(
     val showTomorrowPicker by viewModel.showTomorrowPicker.collectAsState()
     val pool by viewModel.pool.collectAsState()
     val taskGroups by viewModel.taskGroups.collectAsState()
+    val clock = rememberAppClock()
     val todayLocked = viewModel.isTodayLocked()
+    val context = LocalContext.current
+    val snackbarHost = remember { SnackbarHostState() }
+    val completeWithUndo = rememberCompleteWithUndo(viewModel, snackbarHost)
+    var showChooseToday by rememberSaveable { mutableStateOf(false) }
+    val bigTasks = pool.filter { it.taskSize == com.tasknext.app.data.TaskSize.BIG }
+    LaunchedEffect(clock.toLocalDate()) { viewModel.onAppResumed() }
 
-    var currentPage by remember { mutableStateOf(HubPage.HOME) }
+    var currentPage by rememberSaveable { mutableStateOf(HubPage.HOME) }
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
     // Absolute position avoids rebasing a pixel offset when the settled page changes.
-    var pagePosition by remember { mutableFloatStateOf(HubPage.HOME.index.toFloat()) }
+    var pagePosition by remember { mutableFloatStateOf(currentPage.index.toFloat()) }
     var pullOffset by remember { mutableFloatStateOf(0f) }
     var settleJob by remember { mutableStateOf<Job?>(null) }
     var settling by remember { mutableStateOf(false) }
     var settleGeneration by remember { mutableIntStateOf(0) }
-    var showAdd by remember { mutableStateOf(false) }
+    var showAdd by rememberSaveable { mutableStateOf(false) }
 
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
@@ -236,6 +248,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer { translationX = (page.index - pagePosition) * widthPx }
+                    .then(if (page != currentPage) Modifier.clearAndSetSemantics { } else Modifier)
             ) {
                 when (page) {
                     HubPage.TASKS -> TaskListScreen(
@@ -254,16 +267,24 @@ fun HomeScreen(
                         restCredits = restCredits,
                         restToday = restToday,
                         todayLocked = todayLocked,
-                        onCompleteMandatory = { viewModel.completeMandatory(it) },
-                        onCompleteBonus = { viewModel.completeBonus(it) },
+                        onCompleteMandatory = { id -> mandatory?.takeIf { it.id == id }?.let(completeWithUndo) },
+                        onCompleteBonus = { id -> bonusTasks.firstOrNull { it.id == id }?.let(completeWithUndo) },
                         onUseRestCredit = { viewModel.useRestCreditToday() },
                         onOpenTasks = { settleToPage(HubPage.TASKS) },
                         onOpenHistory = { settleToPage(HubPage.HISTORY) },
-                        onOpenSettings = onOpenSettings
+                        onOpenSettings = onOpenSettings,
+                        onAddTask = { showAdd = true },
+                        onChooseToday = { if (bigTasks.isEmpty()) showAdd = true else showChooseToday = true },
+                        hasBigTasks = bigTasks.isNotEmpty(),
+                        lockTime = formatAppTime(context, viewModel.settings.todayLockHour, viewModel.settings.todayLockMinute),
+                        clock = clock,
+                        reminderStatus = mandatory?.let { taskReminderSummary(context, it, viewModel.settings, clock) }
                     )
                 }
             }
         }
+
+        SnackbarHost(snackbarHost, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 72.dp))
 
         // Isolate pull progress reads from the three persistent page compositions.
         PullToAddOverlay(
@@ -297,7 +318,26 @@ fun HomeScreen(
                     minute = m
                 )
                 showAdd = false
+                settleToPage(HubPage.TASKS)
             }
+        )
+    }
+
+    if (showChooseToday) {
+        AlertDialog(
+            onDismissRequest = { showChooseToday = false },
+            title = { Text(stringResource(R.string.choose_today_task)) },
+            text = { LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                items(bigTasks, key = { it.id }) { task ->
+                    TextButton(
+                        onClick = { viewModel.chooseToday(task.id); showChooseToday = false },
+                        enabled = !todayLocked,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(task.title, Modifier.fillMaxWidth()) }
+                }
+            } },
+            confirmButton = { TextButton(onClick = { showChooseToday = false; showAdd = true }) { Text(stringResource(R.string.add_task)) } },
+            dismissButton = { TextButton(onClick = { showChooseToday = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 
@@ -324,7 +364,13 @@ private fun HomePageContent(
     onUseRestCredit: () -> Unit,
     onOpenTasks: () -> Unit,
     onOpenHistory: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onAddTask: () -> Unit,
+    onChooseToday: () -> Unit,
+    hasBigTasks: Boolean,
+    lockTime: String,
+    clock: java.time.LocalDateTime,
+    reminderStatus: String?
 ) {
     val accent = remember(mandatory?.colorHex) {
         mandatory?.colorHex?.let {
@@ -355,7 +401,7 @@ private fun HomePageContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault()).format(LocalDate.now()),
+                    DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault()).format(clock.toLocalDate()),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -397,7 +443,7 @@ private fun HomePageContent(
                     }
                     IconButton(
                         onClick = onOpenSettings,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             Icons.Default.Settings,
@@ -413,11 +459,24 @@ private fun HomePageContent(
                 when {
                     restToday -> RestDayHero()
                     dayComplete -> DayCompleteHero(accent)
-                    mandatory != null -> OneThingHero(
+                    mandatory != null -> Column(
+                        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(stringResource(if (todayLocked) R.string.today_locked else R.string.today_locks_at, lockTime),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp))
+                        OneThingHero(
                         task = mandatory,
                         accent = accent,
                         onDone = { onCompleteMandatory(mandatory.id) }
-                    )
+                        )
+                        reminderStatus?.let {
+                            Spacer(Modifier.height(12.dp))
+                            Text(it, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     else -> Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -430,6 +489,14 @@ private fun HomePageContent(
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (!todayLocked) {
+                            Text(stringResource(R.string.choose_before, lockTime), style = MaterialTheme.typography.bodyMedium)
+                            Button(onClick = onChooseToday) {
+                                Text(stringResource(if (hasBigTasks) R.string.choose_today_task else R.string.add_first_task))
+                            }
+                        } else {
+                            TextButton(onClick = onOpenTasks) { Text(stringResource(R.string.plan_next_tasks)) }
+                        }
                         if (todayLocked && restCredits > 0) {
                             FilledTonalButton(onClick = onUseRestCredit) {
                                 Text(stringResource(R.string.use_rest_credit))
@@ -461,20 +528,13 @@ private fun HomePageContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = onOpenTasks) {
-                    Icon(
-                        Icons.Default.List,
-                        contentDescription = stringResource(R.string.tasks),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                TextButton(onClick = onOpenTasks) { Text(stringResource(R.string.tasks)) }
+                FilledTonalButton(onClick = onAddTask) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(stringResource(R.string.add_task))
                 }
-                IconButton(onClick = onOpenHistory) {
-                    Icon(
-                        Icons.Default.History,
-                        contentDescription = stringResource(R.string.history),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                TextButton(onClick = onOpenHistory) { Text(stringResource(R.string.history)) }
             }
         }
     }
@@ -555,7 +615,7 @@ private fun OneThingHero(task: Task, accent: Color, onDone: () -> Unit) {
                 .clickable(onClick = onDone),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.done), tint = Color.White, modifier = Modifier.size(44.dp))
+            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.done), tint = contrastingContentColor(accent), modifier = Modifier.size(44.dp))
         }
         Spacer(Modifier.height(12.dp))
         Text(stringResource(R.string.tap_when_done), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -589,7 +649,7 @@ private fun DayCompleteHero(accent: Color) {
             Modifier.size(110.dp).background(accent, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
+            Icon(Icons.Default.Check, contentDescription = null, tint = contrastingContentColor(accent), modifier = Modifier.size(56.dp))
         }
         Spacer(Modifier.height(20.dp))
         Text(
@@ -608,23 +668,20 @@ private fun DayCompleteHero(accent: Color) {
 
 @Composable
 private fun BonusTaskRow(task: Task, onDone: () -> Unit) {
-    var completed by remember(task.id) { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-            .clickable(enabled = !completed) { completed = true; onDone() }
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             task.title,
             style = MaterialTheme.typography.bodyMedium,
-            textDecoration = if (completed) TextDecoration.LineThrough else null,
             modifier = Modifier.weight(1f)
         )
-        if (!completed) {
-            Icon(Icons.Default.Check, contentDescription = "Done", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        IconButton(onClick = onDone) {
+            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.done), tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

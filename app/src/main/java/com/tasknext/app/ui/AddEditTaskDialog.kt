@@ -16,6 +16,9 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import com.tasknext.app.data.SettingsStore
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -91,8 +94,15 @@ fun AddEditTaskDialog(
         minute: Int?
     ) -> Unit
 ) {
-    var title by remember(existing?.id) { mutableStateOf(existing?.title ?: "") }
-    var selectedGroup by remember(existing?.id) {
+    val context = LocalContext.current
+    val clock = rememberAppClock()
+    val notificationsAvailable = rememberNotificationAvailability()
+    var title by rememberSaveable(existing?.id) { mutableStateOf(existing?.title ?: "") }
+    var selectedGroup by rememberSaveable(existing?.id,
+        stateSaver = androidx.compose.runtime.saveable.listSaver(
+            save = { listOf(it.name, it.colorHex, it.iconKey, it.builtIn.toString()) },
+            restore = { TaskGroupDefinition(it[0], it[1], it[2], it[3].toBoolean()) }
+        )) {
         mutableStateOf(
             existing?.let {
                 TaskGroupDefinition(
@@ -103,16 +113,16 @@ fun AddEditTaskDialog(
             } ?: TaskGroups.default
         )
     }
-    var taskSize by remember(existing?.id) { mutableStateOf(existing?.taskSize ?: TaskSize.BIG) }
-    var comment by remember(existing?.id) { mutableStateOf(existing?.comment ?: "") }
-    var reminderOn by remember(existing?.id) { mutableStateOf(existing?.reminderEnabled ?: true) }
-    var useDefaultTime by remember(existing?.id) {
+    var taskSize by rememberSaveable(existing?.id) { mutableStateOf(existing?.taskSize ?: TaskSize.BIG) }
+    var comment by rememberSaveable(existing?.id) { mutableStateOf(existing?.comment ?: "") }
+    var reminderOn by rememberSaveable(existing?.id) { mutableStateOf(existing?.reminderEnabled ?: true) }
+    var useDefaultTime by rememberSaveable(existing?.id) {
         mutableStateOf(existing == null || (existing.reminderHour == null && existing.reminderMinute == null))
     }
-    var hour by remember(existing?.id) {
+    var hour by rememberSaveable(existing?.id) {
         mutableIntStateOf((existing?.reminderHour ?: defaultReminderHour).coerceIn(0, 23))
     }
-    var minute by remember(existing?.id) {
+    var minute by rememberSaveable(existing?.id) {
         mutableIntStateOf((existing?.reminderMinute ?: defaultReminderMinute).coerceIn(0, 59))
     }
 
@@ -463,6 +473,9 @@ fun AddEditTaskDialog(
                     )
                 )
 
+                Text(stringResource(R.string.task_sizes_explanation), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                 // One compact reminder control. New tasks use the global default time;
                 // tapping the time turns it into a task-specific override.
                 val displayedReminderHour = if (useDefaultTime) defaultReminderHour else hour
@@ -478,6 +491,22 @@ fun AddEditTaskDialog(
                         showTimePicker = true
                     }
                 )
+                if (reminderOn) {
+                    val reminderTask = (existing ?: Task(title = title)).copy(
+                        reminderEnabled = true,
+                        reminderHour = displayedReminderHour,
+                        reminderMinute = displayedReminderMinute
+                    )
+                    Text(
+                        if (!notificationsAvailable) stringResource(R.string.notifications_blocked)
+                        else taskReminderSummary(context, reminderTask, SettingsStore(context), clock),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (!useDefaultTime) TextButton(onClick = { useDefaultTime = true }) {
+                        Text(stringResource(R.string.use_default_reminder))
+                    }
+                }
             }
         },
         confirmButton = {
@@ -582,7 +611,7 @@ private fun ReminderRow(
                 )
                 Spacer(Modifier.width(5.dp))
                 Text(
-                    "%02d:%02d".format(hour, minute),
+                    formatAppTime(LocalContext.current, hour, minute),
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -601,7 +630,7 @@ fun SimpleTimePickerDialog(
     val state = rememberTimePickerState(
         initialHour = initialHour,
         initialMinute = initialMinute,
-        is24Hour = true
+        is24Hour = android.text.format.DateFormat.is24HourFormat(LocalContext.current)
     )
 
     Dialog(onDismissRequest = onDismiss) {
