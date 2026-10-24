@@ -268,11 +268,14 @@ fun HomeScreen(
                 when (page) {
                     HubPage.TASKS -> TaskListScreen(
                         viewModel = viewModel,
-                        onBack = { settleToPage(HubPage.HOME) }
+                        onBack = { settleToPage(HubPage.HOME) },
+                        onOpenTask = { detailId = it },
+                        navigationRequest = openRequest
                     )
                     HubPage.HISTORY -> HistoryScreen(
                         viewModel = viewModel,
-                        onBack = { settleToPage(HubPage.HOME) }
+                        onBack = { settleToPage(HubPage.HOME) },
+                        navigationRequest = openRequest
                     )
                     HubPage.HOME -> HomePageContent(
                         mandatory = mandatory,

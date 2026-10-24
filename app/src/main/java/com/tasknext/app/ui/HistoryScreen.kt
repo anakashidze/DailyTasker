@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.tasknext.app.data.TaskGroups
 import com.tasknext.app.R
+import com.tasknext.app.TaskOpenRequest
 import com.tasknext.app.data.CompletionLog
 import com.tasknext.app.data.HistoryEventType
 import com.tasknext.app.data.TaskSize
@@ -34,7 +35,7 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
+fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit, navigationRequest: TaskOpenRequest? = null) {
     val history by viewModel.history.collectAsState()
     var groupByDay by remember { mutableStateOf(viewModel.settings.groupHistoryByDay) }
     var showOptions by remember { mutableStateOf(false) }
@@ -52,6 +53,13 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     }
     var confirmClearAll by remember { mutableStateOf(false) }
     var selectedLog by remember { mutableStateOf<CompletionLog?>(null) }
+    LaunchedEffect(navigationRequest) {
+        if (navigationRequest != null) {
+            selectedLog = null
+            confirmClearAll = false
+            showOptions = false
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHost) },

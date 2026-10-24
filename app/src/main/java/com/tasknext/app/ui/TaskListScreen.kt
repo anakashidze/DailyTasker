@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import com.tasknext.app.data.TaskGroups
 import com.tasknext.app.R
+import com.tasknext.app.TaskOpenRequest
 import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
@@ -78,7 +79,12 @@ private class FloatingTask(val task: Task, val origin: TaskPlacement, val tag: S
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalFoundationApi::class)
 @Composable
-fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
+fun TaskListScreen(
+    viewModel: TaskViewModel,
+    onBack: () -> Unit,
+    onOpenTask: ((Long) -> Unit)? = null,
+    navigationRequest: TaskOpenRequest? = null
+) {
     // One Room snapshot keeps IDs unique while tasks cross section boundaries.
     val tasksSnapshot by viewModel.allTasks.collectAsState()
     val pool = tasksSnapshot.filter { it.slot == null && it.overdueSinceEpochDay == null }
@@ -92,6 +98,13 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     var showAdd by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var backdateTask by remember { mutableStateOf<Task?>(null) }
+    LaunchedEffect(navigationRequest) {
+        if (navigationRequest != null) {
+            showAdd = false
+            editingId = null
+            backdateTask = null
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -295,7 +308,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 task = task,
                 tag = tag,
                 weekend = section == "pool" && task.taskSize == TaskSize.BIG && isWeekendQueueDate(clock.toLocalDate(), index),
-                onEdit = { editingId = task.id },
+                onEdit = { if (onOpenTask != null) onOpenTask(task.id) else editingId = task.id },
                 onDelete = { deleteWithUndo(task) },
                 onComplete = {
                     if (task.overdueSinceEpochDay == clock.toLocalDate().minusDays(1).toEpochDay()) backdateTask = task
