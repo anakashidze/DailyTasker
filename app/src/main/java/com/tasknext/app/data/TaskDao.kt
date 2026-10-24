@@ -15,6 +15,8 @@ interface TaskDao {
     fun observeOverdue(): Flow<List<Task>>
     @Query("SELECT * FROM tasks WHERE id = :id")
     suspend fun getById(id: Long): Task?
+    @Query("SELECT * FROM tasks WHERE id = :id AND isArchived = 0")
+    fun observeTask(id: Long): Flow<Task?>
     @Insert suspend fun insert(task: Task): Long
     @Update suspend fun update(task: Task)
     @Update suspend fun updateTasks(tasks: List<Task>)

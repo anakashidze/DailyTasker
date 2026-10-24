@@ -13,7 +13,7 @@ import com.tasknext.app.data.AppLocale
 import com.tasknext.app.data.TaskRepository
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
-import com.tasknext.app.MainActivity
+import com.tasknext.app.TaskDestination
 import com.tasknext.app.data.AppDatabase
 import com.tasknext.app.data.SettingsStore
 import kotlinx.coroutines.CoroutineScope
@@ -66,9 +66,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val openIntent = PendingIntent.getActivity(
             context,
             taskId.toInt(),
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            },
+            TaskDestination.intent(context, taskId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 

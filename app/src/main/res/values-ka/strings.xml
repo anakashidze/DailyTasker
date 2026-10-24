@@ -113,7 +113,7 @@
     <string name="snooze_range">შეიყვანეთ 1–1440 წუთი</string>
     <string name="notification_task_channel">დავალების შეხსენებები</string>
     <string name="notification_task_title">დროა: %1$s</string>
-    <string name="notification_task_body">შეეხეთ TaskNext-ის გასახსნელად</string>
+    <string name="notification_task_body">შეეხეთ დავალების სანახავად</string>
     <string name="notification_task_snooze">გადადება %1$d წუთით</string>
     <string name="undo">გაუქმება</string>
     <string name="task_deleted">დავალება წაიშალა</string>
@@ -134,4 +134,27 @@
     <string name="rest_credits_help">როგორ მუშაობს დასვენების კრედიტები</string>
     <string name="rest_credits_explanation">კვირაში 5 პატარა დავალების შესრულებით მიიღებთ 1 დასვენების კრედიტს. კრედიტები მოქმედებს ორშაბათიდან კვირის ჩათვლით და შემდეგ კვირაზე არ გადადის. დაბლოკვის დროის შემდეგ კრედიტის გამოყენება შეგიძლიათ, თუ დღევანდელი მთავარი დავალება არჩეული არ არის და დღე ჯერ არ დასრულებულა. დასვენება ინარჩუნებს სერიას, თუმცა არ ზრდის მას.</string>
     <string name="task_sizes_explanation">დიდი — დღის მთავარი დავალება. პატარა — დამატებითი ბონუს დავალება.</string>
+    <string name="task_details">დავალების დეტალები</string>
+    <string name="task_no_longer_available">ეს დავალება შესრულებულია ან წაშლილია. დახურეთ ეს ფანჯარა დღევანდელი დღის სანახავად.</string>
+    <string name="task_details_locked">დღევანდელი დავალება დაბლოკილია. დეტალების ნახვა და დავალების დასრულება კვლავ შეგიძლიათ დღევანდელ ეკრანზე.</string>
+    <string name="more_options">სხვა პარამეტრები: ჯგუფი, შენიშვნა, შეხსენება</string>
+    <string name="fewer_options">პარამეტრების დამალვა</string>
+    <string name="remove_group">ჯგუფის წაშლა: %1$s</string>
+    <string name="appearance">გარეგნობა</string>
+    <string name="theme_system">სისტემის პარამეტრი</string>
+    <string name="theme_light">ღია</string>
+    <string name="theme_dark">მუქი</string>
+    <string name="history_options">ისტორიის პარამეტრები</string>
+    <string name="group_task">დავალება</string>
+    <string name="group_home">სახლი</string>
+    <string name="group_health">ჯანმრთელობა</string>
+    <string name="group_work">სამუშაო</string>
+    <plurals name="streak_days">
+        <item quantity="one">%1$d დღე</item>
+        <item quantity="other">%1$d დღე</item>
+    </plurals>
+    <plurals name="rest_credit_total">
+        <item quantity="one">%1$d დასვენების კრედიტი</item>
+        <item quantity="other">%1$d დასვენების კრედიტი</item>
+    </plurals>
 </resources>

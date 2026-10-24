@@ -47,6 +47,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import com.tasknext.app.data.TaskGroups
 import com.tasknext.app.R
 import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
@@ -120,7 +122,6 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val smallPool = localPool.filter { it.taskSize == TaskSize.SMALL && it.id !in activeIds }
     val allTasks = tasksSnapshot
     SideEffect { placements.keys.retainAll(tasksSnapshot.map { it.id }.toSet()) }
-    val editing = allTasks.firstOrNull { it.id == editingId }
 
     fun deleteWithUndo(task: Task) {
         if (task.slot == 0 && viewModel.isTodayLocked()) return
@@ -294,7 +295,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 task = task,
                 tag = tag,
                 weekend = section == "pool" && task.taskSize == TaskSize.BIG && isWeekendQueueDate(clock.toLocalDate(), index),
-                onEdit = { if (!(task.slot == 0 && todayLocked)) editingId = task.id },
+                onEdit = { editingId = task.id },
                 onDelete = { deleteWithUndo(task) },
                 onComplete = {
                     if (task.overdueSinceEpochDay == clock.toLocalDate().minusDays(1).toEpochDay()) backdateTask = task
@@ -436,32 +437,8 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         )
     }
 
-    editing?.let { task ->
-        AddEditTaskDialog(
-            existing = task,
-            availableGroups = taskGroups,
-            defaultReminderHour = viewModel.settings.defaultReminderHour,
-            defaultReminderMinute = viewModel.settings.defaultReminderMinute,
-            onAddGroup = { viewModel.addCustomGroup(it) },
-            onRemoveGroup = { viewModel.removeCustomGroup(it) },
-            onDismiss = { editingId = null },
-            onSave = { title, group, taskSize, comment, remOn, h, m ->
-                viewModel.updateTask(
-                    task.copy(
-                        title = title,
-                        colorHex = group.colorHex,
-                        groupName = group.name,
-                        groupIcon = group.iconKey,
-                        taskSize = taskSize,
-                        comment = comment,
-                        reminderEnabled = remOn,
-                        reminderHour = h,
-                        reminderMinute = m
-                    )
-                )
-                editingId = null
-            }
-        )
+    editingId?.let { id ->
+        TaskDetailsDialog(id, viewModel, onDismiss = { editingId = null })
     }
 
     backdateTask?.let { task ->
@@ -613,7 +590,7 @@ private fun TaskRow(
             Box(contentAlignment = Alignment.Center) {
                 GroupIcon(
                     key = task.groupIcon,
-                    contentDescription = task.groupName,
+                    contentDescription = TaskGroups.displayName(LocalContext.current, task.groupName, task.groupIcon),
                     tint = color,
                     modifier = Modifier.size(18.dp)
                 )
@@ -640,7 +617,7 @@ private fun TaskRow(
             ) {
                 TaskSizePill(task.taskSize)
                 Text(
-                    task.groupName,
+                    TaskGroups.displayName(LocalContext.current, task.groupName, task.groupIcon),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

@@ -4,6 +4,8 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
 class SettingsStore(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = context.applicationContext.getSharedPreferences("tasknext_settings", Context.MODE_PRIVATE)
@@ -23,9 +25,15 @@ class SettingsStore(context: Context) {
     var autoFillNextTask: Boolean
         get() = prefs.getBoolean("auto_fill_next", false)
         set(value) = prefs.edit().putBoolean("auto_fill_next", value).apply()
-    var darkTheme: Boolean
-        get() = prefs.getBoolean("dark_theme", false)
-        set(value) = prefs.edit().putBoolean("dark_theme", value).apply()
+    var themeMode: ThemeMode
+        get() {
+            val saved = prefs.getString("theme_mode", null)
+            return ThemeMode.entries.firstOrNull { it.name == saved }
+                ?: if (prefs.contains("dark_theme")) {
+                    if (prefs.getBoolean("dark_theme", false)) ThemeMode.DARK else ThemeMode.LIGHT
+                } else ThemeMode.SYSTEM
+        }
+        set(value) = prefs.edit().putString("theme_mode", value.name).apply()
     var groupHistoryByDay: Boolean
         get() = prefs.getBoolean("group_history_by_day", true)
         set(value) = prefs.edit().putBoolean("group_history_by_day", value).apply()

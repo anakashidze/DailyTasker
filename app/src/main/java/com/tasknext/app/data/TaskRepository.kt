@@ -65,14 +65,18 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     suspend fun getAllTasksOnce(): List<Task> = dao.getAllOnce()
     suspend fun updateTask(task: Task) {
         val existing = dao.getById(task.id) ?: return
-        if (existing.slot == 0 && isTodayLocked()) return
+        if (existing.isArchived || (existing.slot == 0 && isTodayLocked())) return
+        val edited = existing.copy(title = task.title, colorHex = task.colorHex,
+            groupName = task.groupName, groupIcon = task.groupIcon, taskSize = task.taskSize,
+            comment = task.comment, reminderEnabled = task.reminderEnabled,
+            reminderHour = task.reminderHour, reminderMinute = task.reminderMinute)
 
         val normalized = when {
             task.taskSize == TaskSize.SMALL && existing.slot == 0 ->
-                task.copy(slot = null, overdueSinceEpochDay = null)
+                edited.copy(slot = null, overdueSinceEpochDay = null)
             task.taskSize == TaskSize.BIG && existing.slot != null && existing.slot != 0 ->
-                task.copy(slot = null, overdueSinceEpochDay = null)
-            else -> task
+                edited.copy(slot = null, overdueSinceEpochDay = null)
+            else -> edited
         }
         dao.update(normalized)
     }

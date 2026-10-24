@@ -11,7 +11,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
-import com.tasknext.app.MainActivity
+import com.tasknext.app.TaskDestination
 import com.tasknext.app.R
 import com.tasknext.app.data.AppDatabase
 import com.tasknext.app.data.DailyOutcomeStatus
@@ -136,9 +136,7 @@ class DailyPlanningReceiver : BroadcastReceiver() {
         val openApp = PendingIntent.getActivity(
             context,
             notificationId,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            },
+            TaskDestination.intent(context),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 

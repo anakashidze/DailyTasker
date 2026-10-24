@@ -46,7 +46,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: DailyTasker-alpha8-test-results
+          name: DailyTasker-alpha9-test-results
           path: |
             app/build/test-results/testDebugUnitTest
             app/build/reports/tests/testDebugUnitTest
@@ -80,7 +80,7 @@ jobs:
       - name: Upload verified APK
         uses: actions/upload-artifact@v6
         with:
-          name: DailyTasker-v2.0.0-alpha8-verified-apk
+          name: DailyTasker-v2.0.0-alpha9-verified-apk
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/app-debug.apk.sha256

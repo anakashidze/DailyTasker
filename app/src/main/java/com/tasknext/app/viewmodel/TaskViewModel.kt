@@ -117,6 +117,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         refreshTodayWidget()
     }
 
+    fun observeTask(id: Long) = dao.observeTask(id)
+
     fun updateTask(task: Task) = viewModelScope.launch {
         repo.updateTask(task)
         repo.getTask(task.id)?.let { syncTaskReminder(it) }

@@ -3,6 +3,7 @@ package com.tasknext.app.data
 import android.content.Context
 import androidx.room.Room
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -94,5 +95,24 @@ class StreakTest {
         settings.todayLockHour = 12
         settings.todayLockMinute = 45
         assertEquals(0, settings.todayLockMinute)
+    }
+
+    @Test fun savingOldEditorDoesNotResurrectCompletedTask() = runBlocking {
+        val original = Task(id = 90L, title = "Before", taskSize = TaskSize.SMALL, slot = 1)
+        db.taskDao().insert(original)
+        repository.completeBonus(original.id)
+        repository.updateTask(original.copy(title = "Unsaved edit"))
+        assertTrue(db.taskDao().getById(original.id)!!.isArchived)
+        assertNull(db.taskDao().observeTask(original.id).first())
+    }
+    @Test fun savingOldEditorPreservesLaterReorderAndSlot() = runBlocking {
+        val original = Task(id = 91L, title = "Before", taskSize = TaskSize.SMALL)
+        db.taskDao().insert(original)
+        db.taskDao().update(original.copy(orderIndex = 7, slot = 2))
+        repository.updateTask(original.copy(title = "Edited"))
+        val result = db.taskDao().getById(original.id)!!
+        assertEquals("Edited", result.title)
+        assertEquals(7, result.orderIndex)
+        assertEquals(2, result.slot)
     }
 }

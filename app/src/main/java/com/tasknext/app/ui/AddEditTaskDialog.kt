@@ -128,11 +128,11 @@ fun AddEditTaskDialog(
 
     var showTimePicker by remember { mutableStateOf(false) }
     var groupExpanded by remember { mutableStateOf(false) }
-    var taskSizeExpanded by remember { mutableStateOf(false) }
-    var showNewGroup by remember { mutableStateOf(false) }
-    var newGroupName by remember { mutableStateOf("") }
-    var newGroupIcon by remember { mutableStateOf("star") }
-    var newGroupColor by remember { mutableStateOf("#7C3AED") }
+    var showOptions by rememberSaveable(existing?.id) { mutableStateOf(existing != null) }
+    var showNewGroup by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var newGroupName by rememberSaveable(existing?.id) { mutableStateOf("") }
+    var newGroupIcon by rememberSaveable(existing?.id) { mutableStateOf("star") }
+    var newGroupColor by rememberSaveable(existing?.id) { mutableStateOf("#7C3AED") }
     val titleFocusRequester = remember { FocusRequester() }
     val groupNameFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -146,8 +146,8 @@ fun AddEditTaskDialog(
             keyboardController?.show()
         }
     }
-    LaunchedEffect(showNewGroup) {
-        if (showNewGroup) {
+    LaunchedEffect(showNewGroup, showOptions) {
+        if (showNewGroup && showOptions) {
             withFrameNanos { }
             groupNameFocusRequester.requestFocus()
             withFrameNanos { }
@@ -193,68 +193,29 @@ fun AddEditTaskDialog(
                     )
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            stringResource(R.string.task_size),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TaskSize.entries.forEach { choice ->
+                        FilterChip(
+                            selected = taskSize == choice,
+                            onClick = { taskSize = choice },
+                            label = { Text(taskSizeLabel(choice)) },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                         )
-                        Box(Modifier.fillMaxWidth()) {
-                            OutlinedButton(
-                                onClick = { taskSizeExpanded = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = taskSizePalette(taskSize).container,
-                                    contentColor = taskSizePalette(taskSize).content
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    taskSizePalette(taskSize).content.copy(alpha = 0.22f)
-                                )
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(7.dp)
-                                        .background(taskSizePalette(taskSize).content, CircleShape)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    taskSizeLabel(taskSize),
-                                    color = taskSizePalette(taskSize).content,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = taskSizeExpanded,
-                                onDismissRequest = { taskSizeExpanded = false }
-                            ) {
-                                TaskSize.entries.forEach { choice ->
-                                    DropdownMenuItem(
-                                        text = { Text(taskSizeLabel(choice)) },
-                                        leadingIcon = {
-                                            Box(
-                                                Modifier
-                                                    .size(9.dp)
-                                                    .background(taskSizePalette(choice).content, CircleShape)
-                                            )
-                                        },
-                                        onClick = {
-                                            taskSize = choice
-                                            taskSizeExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
                     }
-
-                    Column(Modifier.weight(1f)) {
+                }
+                Text(stringResource(R.string.task_sizes_explanation), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { showOptions = !showOptions }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(if (showOptions) R.string.fewer_options else R.string.more_options))
+                }
+                if (!showOptions) {
+                    Text(TaskGroups.displayName(context, selectedGroup.name, selectedGroup.iconKey),
+                        style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(if (reminderOn) R.string.reminder_when_active else R.string.reminder_off),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (showOptions) {
+                    Column(Modifier.fillMaxWidth()) {
                         Text(
                             stringResource(R.string.group),
                             style = MaterialTheme.typography.labelMedium,
@@ -273,7 +234,7 @@ fun AddEditTaskDialog(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(5.dp))
-                                Text(selectedGroup.name, maxLines = 1)
+                                Text(TaskGroups.displayName(context, selectedGroup.name, selectedGroup.iconKey))
                             }
                             DropdownMenu(
                                 expanded = groupExpanded,
@@ -281,7 +242,7 @@ fun AddEditTaskDialog(
                             ) {
                                 menuGroups.forEach { group ->
                                     DropdownMenuItem(
-                                        text = { Text(group.name) },
+                                        text = { Text(TaskGroups.displayName(context, group.name, group.iconKey)) },
                                         leadingIcon = {
                                             GroupIcon(
                                                 key = group.iconKey,
@@ -300,11 +261,11 @@ fun AddEditTaskDialog(
                                                         }
                                                         groupExpanded = false
                                                     },
-                                                    modifier = Modifier.size(32.dp)
+                                                    modifier = Modifier.size(48.dp)
                                                 ) {
                                                     Icon(
                                                         Icons.Default.DeleteOutline,
-                                                        contentDescription = "Remove ${group.name} group",
+                                                        contentDescription = stringResource(R.string.remove_group, group.name),
                                                         modifier = Modifier.size(18.dp)
                                                     )
                                                 }
@@ -336,7 +297,6 @@ fun AddEditTaskDialog(
                             }
                         }
                     }
-                }
 
                 if (showNewGroup) {
                     Surface(
@@ -473,9 +433,6 @@ fun AddEditTaskDialog(
                     )
                 )
 
-                Text(stringResource(R.string.task_sizes_explanation), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-
                 // One compact reminder control. New tasks use the global default time;
                 // tapping the time turns it into a task-specific override.
                 val displayedReminderHour = if (useDefaultTime) defaultReminderHour else hour
@@ -506,6 +463,7 @@ fun AddEditTaskDialog(
                     if (!useDefaultTime) TextButton(onClick = { useDefaultTime = true }) {
                         Text(stringResource(R.string.use_default_reminder))
                     }
+                }
                 }
             }
         },

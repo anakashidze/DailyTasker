@@ -113,7 +113,7 @@
     <string name="snooze_range">Enter 1–1440 minutes</string>
     <string name="notification_task_channel">Task reminders</string>
     <string name="notification_task_title">Time for: %1$s</string>
-    <string name="notification_task_body">Tap to open TaskNext</string>
+    <string name="notification_task_body">Tap to view this task</string>
     <string name="notification_task_snooze">Snooze %1$d min</string>
     <string name="undo">Undo</string>
     <string name="task_deleted">Task deleted</string>
@@ -134,4 +134,27 @@
     <string name="rest_credits_help">How Rest Credits work</string>
     <string name="rest_credits_explanation">Complete 5 Small tasks in a week to earn 1 Rest Credit. Credits apply to the current Monday–Sunday week and do not carry over. After the Today lock time, you can use a credit if no Today task was selected and the day is not already complete. A rest day protects your streak without increasing it.</string>
     <string name="task_sizes_explanation">Big: a main daily task. Small: an optional bonus task.</string>
+    <string name="task_details">Task details</string>
+    <string name="task_no_longer_available">This task was completed or removed. Close this window to see Today.</string>
+    <string name="task_details_locked">Today is locked. You can still read the details and complete the task from Today.</string>
+    <string name="more_options">More options: group, notes, reminder</string>
+    <string name="fewer_options">Hide options</string>
+    <string name="remove_group">Remove %1$s group</string>
+    <string name="appearance">Appearance</string>
+    <string name="theme_system">Use system setting</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="history_options">History options</string>
+    <string name="group_task">Task</string>
+    <string name="group_home">Home</string>
+    <string name="group_health">Health</string>
+    <string name="group_work">Work</string>
+    <plurals name="streak_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <plurals name="rest_credit_total">
+        <item quantity="one">%1$d Rest Credit</item>
+        <item quantity="other">%1$d Rest Credits</item>
+    </plurals>
 </resources>

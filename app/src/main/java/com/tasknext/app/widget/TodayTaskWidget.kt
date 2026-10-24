@@ -8,11 +8,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.widget.RemoteViews
-import com.tasknext.app.MainActivity
+import com.tasknext.app.TaskDestination
 import com.tasknext.app.R
 import com.tasknext.app.data.AppDatabase
 import com.tasknext.app.data.DailyOutcomeStatus
 import com.tasknext.app.data.SettingsStore
+import com.tasknext.app.data.TaskGroups
 import com.tasknext.app.data.TaskRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -82,9 +83,7 @@ class TodayTaskWidget : AppWidgetProvider() {
             val dayComplete = settings.dayCompletedEpochDay == todayEpochDay
             val streak = repository.currentStreakCount()
 
-            val openAppIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
+            val openAppIntent = TaskDestination.intent(context, todayTask?.id)
             val openApp = PendingIntent.getActivity(
                 context,
                 7001,
@@ -96,16 +95,13 @@ class TodayTaskWidget : AppWidgetProvider() {
                 val views = RemoteViews(context.packageName, R.layout.widget_today_task)
                 views.setTextViewText(
                     R.id.widget_streak,
-                    "🔥 " + localizedContext.getString(
-                        if (streak == 1) R.string.day_count else R.string.days_count,
-                        streak
-                    )
+                    "🔥 " + localizedContext.resources.getQuantityString(R.plurals.streak_days, streak, streak)
                 )
                 when {
                     todayTask != null -> {
                         views.setTextViewText(
                             R.id.widget_meta,
-                            localizedContext.getString(R.string.widget_today_group, todayTask.groupName)
+                            localizedContext.getString(R.string.widget_today_group, TaskGroups.displayName(localizedContext, todayTask.groupName, todayTask.groupIcon))
                         )
                         views.setTextViewText(R.id.widget_title, todayTask.title)
                     }

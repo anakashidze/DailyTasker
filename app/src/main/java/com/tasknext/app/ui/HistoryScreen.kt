@@ -10,7 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.tasknext.app.data.TaskGroups
 import com.tasknext.app.R
 import com.tasknext.app.data.CompletionLog
 import com.tasknext.app.data.HistoryEventType
@@ -35,7 +36,8 @@ import java.util.*
 @Composable
 fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     val history by viewModel.history.collectAsState()
-    val groupByDay = viewModel.settings.groupHistoryByDay
+    var groupByDay by remember { mutableStateOf(viewModel.settings.groupHistoryByDay) }
+    var showOptions by remember { mutableStateOf(false) }
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -63,9 +65,24 @@ fun HistoryScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    if (history.isNotEmpty()) {
-                        IconButton(onClick = { confirmClearAll = true }) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.clear_history))
+                    Box {
+                        IconButton(onClick = { showOptions = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.history_options))
+                        }
+                        DropdownMenu(expanded = showOptions, onDismissRequest = { showOptions = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.group_history_by_day)) },
+                                leadingIcon = { Checkbox(checked = groupByDay, onCheckedChange = null) },
+                                onClick = {
+                                    groupByDay = !groupByDay
+                                    viewModel.settings.groupHistoryByDay = groupByDay
+                                    showOptions = false
+                                }
+                            )
+                            if (history.isNotEmpty()) DropdownMenuItem(
+                                text = { Text(stringResource(R.string.clear_history)) },
+                                onClick = { showOptions = false; confirmClearAll = true }
+                            )
                         }
                     }
                 }
@@ -194,7 +211,7 @@ private fun HistoryRow(
                     modifier = Modifier.size(14.dp)
                 )
                 Text(
-                    log.groupNameSnapshot,
+                    TaskGroups.displayName(LocalContext.current, log.groupNameSnapshot, log.groupIconSnapshot),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -251,14 +268,14 @@ private fun HistoryDetailDialog(
                         Box(contentAlignment = Alignment.Center) {
                             GroupIcon(
                                 key = log.groupIconSnapshot,
-                                contentDescription = log.groupNameSnapshot,
+                                contentDescription = TaskGroups.displayName(LocalContext.current, log.groupNameSnapshot, log.groupIconSnapshot),
                                 tint = color,
                                 modifier = Modifier.size(21.dp)
                             )
                         }
                     }
                     Column {
-                        Text(log.groupNameSnapshot, fontWeight = FontWeight.SemiBold)
+                        Text(TaskGroups.displayName(LocalContext.current, log.groupNameSnapshot, log.groupIconSnapshot), fontWeight = FontWeight.SemiBold)
                         Text(
                             stringResource(
                                 if (log.taskSizeSnapshot == TaskSize.BIG) R.string.task_size_big

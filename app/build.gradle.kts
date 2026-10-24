@@ -12,8 +12,8 @@ android {
         applicationId = "com.tasknext.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "2.0.0-alpha8"
+        versionCode = 34
+        versionName = "2.0.0-alpha9"
     }
 
     signingConfigs {

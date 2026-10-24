@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tasknext.app.R
+import com.tasknext.app.data.ThemeMode
 import com.tasknext.app.viewmodel.TaskViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,7 +33,7 @@ import com.tasknext.app.viewmodel.TaskViewModel
 fun SettingsScreen(
     viewModel: TaskViewModel,
     onBack: () -> Unit,
-    onDarkThemeChanged: (Boolean) -> Unit = {},
+    onThemeChanged: (ThemeMode) -> Unit = {},
     onRequestNotificationPermission: () -> Unit = {},
     onLanguageChanged: (String) -> Unit = {}
 ) {
@@ -47,8 +48,8 @@ fun SettingsScreen(
     var snoozeMinutes by remember { mutableIntStateOf(settings.snoozeMinutes.coerceIn(1, 24 * 60)) }
     var snoozeText by remember { mutableStateOf(snoozeMinutes.toString()) }
     var showSnoozeEditor by remember { mutableStateOf(false) }
-    var darkTheme by remember { mutableStateOf(settings.darkTheme) }
-    var groupByDay by remember { mutableStateOf(settings.groupHistoryByDay) }
+    var themeMode by remember { mutableStateOf(settings.themeMode) }
+    var showThemePicker by remember { mutableStateOf(false) }
 
     var lockHour by remember { mutableIntStateOf(settings.todayLockHour) }
     var lockMinute by remember { mutableIntStateOf(settings.todayLockMinute) }
@@ -183,51 +184,21 @@ fun SettingsScreen(
             CompactSection(
                 title = stringResource(R.string.settings_appearance_language)
             ) {
-                CompactToggleRow(
-                    label = stringResource(R.string.dark_theme),
-                    checked = darkTheme,
-                    onChange = {
-                        darkTheme = it
-                        settings.darkTheme = it
-                        onDarkThemeChanged(it)
-                    }
+                CompactValueRow(
+                    label = stringResource(R.string.appearance),
+                    value = themeModeLabel(themeMode),
+                    onValueClick = { showThemePicker = true }
                 )
-
-                CompactToggleRow(
-                    label = stringResource(R.string.group_history_by_day),
-                    checked = groupByDay,
-                    onChange = {
-                        groupByDay = it
-                        settings.groupHistoryByDay = it
-                    }
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 44.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        stringResource(R.string.language),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f)
+                Box {
+                    CompactValueRow(
+                        label = stringResource(R.string.language),
+                        value = when (languageCode) {
+                            "ka" -> "ქართული"
+                            "ru" -> "Русский"
+                            else -> "English"
+                        },
+                        onValueClick = { languageExpanded = true }
                     )
-                    Box {
-                        OutlinedButton(
-                            onClick = { languageExpanded = true },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.heightIn(min = 48.dp)
-                        ) {
-                            Text(
-                                when (languageCode) {
-                                    "ka" -> "ქართული"
-                                    "ru" -> "Русский"
-                                    else -> "English"
-                                },
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                        }
                         DropdownMenu(
                             expanded = languageExpanded,
                             onDismissRequest = { languageExpanded = false }
@@ -250,12 +221,34 @@ fun SettingsScreen(
                                 )
                             }
                         }
-                    }
                 }
             }
 
             Spacer(Modifier.height(8.dp))
         }
+    }
+
+    if (showThemePicker) {
+        AlertDialog(
+            onDismissRequest = { showThemePicker = false },
+            title = { Text(stringResource(R.string.appearance)) },
+            text = {
+                Column {
+                    ThemeMode.entries.forEach { mode ->
+                        Row(Modifier.fillMaxWidth().clickable {
+                            themeMode = mode
+                            settings.themeMode = mode
+                            onThemeChanged(mode)
+                            showThemePicker = false
+                        }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = mode == themeMode, onClick = null)
+                            Text(themeModeLabel(mode), Modifier.padding(start = 12.dp).heightIn(min = 48.dp).wrapContentHeight())
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showThemePicker = false }) { Text(stringResource(R.string.cancel)) } }
+        )
     }
 
     if (showRestInfo) {
@@ -489,3 +482,10 @@ private fun CompactNotificationRow(
         )
     }
 }
+
+@Composable
+private fun themeModeLabel(mode: ThemeMode): String = stringResource(when (mode) {
+    ThemeMode.SYSTEM -> R.string.theme_system
+    ThemeMode.LIGHT -> R.string.theme_light
+    ThemeMode.DARK -> R.string.theme_dark
+})

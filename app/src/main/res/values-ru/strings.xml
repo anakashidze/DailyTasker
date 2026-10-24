@@ -113,7 +113,7 @@
     <string name="snooze_range">Введите от 1 до 1440 минут</string>
     <string name="notification_task_channel">Напоминания о задачах</string>
     <string name="notification_task_title">Пора: %1$s</string>
-    <string name="notification_task_body">Нажмите, чтобы открыть TaskNext</string>
+    <string name="notification_task_body">Нажмите, чтобы посмотреть задачу</string>
     <string name="notification_task_snooze">Отложить на %1$d мин</string>
     <string name="undo">Отменить</string>
     <string name="task_deleted">Задача удалена</string>
@@ -134,4 +134,31 @@
     <string name="rest_credits_help">Как работают кредиты отдыха</string>
     <string name="rest_credits_explanation">Выполните 5 маленьких задач за неделю, чтобы получить 1 кредит отдыха. Кредиты действуют с понедельника по воскресенье и не переносятся на следующую неделю. После времени блокировки можно использовать кредит, если задача на сегодня не выбрана и день ещё не завершён. День отдыха сохраняет серию, но не увеличивает её.</string>
     <string name="task_sizes_explanation">Большая — главная задача дня. Маленькая — дополнительная бонусная задача.</string>
+    <string name="task_details">Подробности задачи</string>
+    <string name="task_no_longer_available">Эта задача выполнена или удалена. Закройте окно, чтобы посмотреть Сегодня.</string>
+    <string name="task_details_locked">Задача на сегодня заблокирована. Можно читать подробности и завершить задачу на экране Сегодня.</string>
+    <string name="more_options">Ещё: группа, заметки, напоминание</string>
+    <string name="fewer_options">Скрыть параметры</string>
+    <string name="remove_group">Удалить группу «%1$s»</string>
+    <string name="appearance">Оформление</string>
+    <string name="theme_system">Как в системе</string>
+    <string name="theme_light">Светлое</string>
+    <string name="theme_dark">Тёмное</string>
+    <string name="history_options">Параметры истории</string>
+    <string name="group_task">Задача</string>
+    <string name="group_home">Дом</string>
+    <string name="group_health">Здоровье</string>
+    <string name="group_work">Работа</string>
+    <plurals name="streak_days">
+        <item quantity="one">%1$d день</item>
+        <item quantity="few">%1$d дня</item>
+        <item quantity="many">%1$d дней</item>
+        <item quantity="other">%1$d дня</item>
+    </plurals>
+    <plurals name="rest_credit_total">
+        <item quantity="one">%1$d кредит отдыха</item>
+        <item quantity="few">%1$d кредита отдыха</item>
+        <item quantity="many">%1$d кредитов отдыха</item>
+        <item quantity="other">%1$d кредита отдыха</item>
+    </plurals>
 </resources>

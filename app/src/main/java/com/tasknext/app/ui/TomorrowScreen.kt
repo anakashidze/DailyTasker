@@ -123,7 +123,7 @@ private fun TomorrowTaskCard(task: Task, isExplicit: Boolean, accent: Color) {
             Box(contentAlignment = Alignment.Center) {
                 GroupIcon(
                     key = task.groupIcon,
-                    contentDescription = task.groupName,
+                    contentDescription = TaskGroups.displayName(LocalContext.current, task.groupName, task.groupIcon),
                     tint = accent,
                     modifier = Modifier.size(32.dp)
                 )
@@ -164,7 +164,7 @@ private fun TomorrowTaskCard(task: Task, isExplicit: Boolean, accent: Color) {
                         tint = accent,
                         modifier = Modifier.size(16.dp)
                     )
-                    Text(task.groupName, style = MaterialTheme.typography.labelMedium)
+                    Text(TaskGroups.displayName(LocalContext.current, task.groupName, task.groupIcon), style = MaterialTheme.typography.labelMedium)
                 }
             }
             Surface(

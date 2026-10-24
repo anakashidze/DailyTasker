@@ -40,6 +40,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tasknext.app.R
+import com.tasknext.app.TaskOpenRequest
 import com.tasknext.app.data.Task
 import com.tasknext.app.viewmodel.TaskViewModel
 import kotlinx.coroutines.Job
@@ -71,7 +73,9 @@ private enum class HubGesture { LEFT, RIGHT, DOWN }
 @Composable
 fun HomeScreen(
     viewModel: TaskViewModel,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    openRequest: TaskOpenRequest? = null,
+    onOpenRequestHandled: () -> Unit = {}
 ) {
     val mandatory by viewModel.mandatoryTask.collectAsState()
     val bonusTasks by viewModel.bonusTasks.collectAsState()
@@ -100,6 +104,7 @@ fun HomeScreen(
     var settling by remember { mutableStateOf(false) }
     var settleGeneration by remember { mutableIntStateOf(0) }
     var showAdd by rememberSaveable { mutableStateOf(false) }
+    var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
@@ -130,6 +135,16 @@ fun HomeScreen(
             } finally {
                 if (generation == settleGeneration) settling = false
             }
+        }
+    }
+
+    LaunchedEffect(openRequest) {
+        openRequest?.let {
+            showAdd = false
+            showChooseToday = false
+            detailId = it.taskId
+            settleToPage(HubPage.HOME)
+            onOpenRequestHandled()
         }
     }
 
@@ -267,6 +282,7 @@ fun HomeScreen(
                         restCredits = restCredits,
                         restToday = restToday,
                         todayLocked = todayLocked,
+                        onOpenTask = { detailId = it },
                         onCompleteMandatory = { id -> mandatory?.takeIf { it.id == id }?.let(completeWithUndo) },
                         onCompleteBonus = { id -> bonusTasks.firstOrNull { it.id == id }?.let(completeWithUndo) },
                         onUseRestCredit = { viewModel.useRestCreditToday() },
@@ -295,6 +311,8 @@ fun HomeScreen(
                 .padding(top = 8.dp)
         )
     }
+
+    detailId?.let { TaskDetailsDialog(it, viewModel, onDismiss = { detailId = null }) }
 
     if (showAdd) {
         AddEditTaskDialog(
@@ -359,6 +377,7 @@ private fun HomePageContent(
     restCredits: Int,
     restToday: Boolean,
     todayLocked: Boolean,
+    onOpenTask: (Long) -> Unit,
     onCompleteMandatory: (Long) -> Unit,
     onCompleteBonus: (Long) -> Unit,
     onUseRestCredit: () -> Unit,
@@ -423,21 +442,14 @@ private fun HomePageContent(
                             modifier = Modifier.size(17.dp)
                         )
                         Text(
-                            stringResource(
-                                if (streakCount == 1) R.string.day_count else R.string.days_count,
-                                streakCount
-                            ),
+                            pluralStringResource(R.plurals.streak_days, streakCount, streakCount),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
                     if (restCredits > 0) {
                         Text(
-                            stringResource(
-                                if (restCredits == 1) R.string.rest_credit_count
-                                else R.string.rest_credits_count,
-                                restCredits
-                            ),
+                            pluralStringResource(R.plurals.rest_credit_total, restCredits, restCredits),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -470,7 +482,8 @@ private fun HomePageContent(
                         OneThingHero(
                         task = mandatory,
                         accent = accent,
-                        onDone = { onCompleteMandatory(mandatory.id) }
+                        onDone = { onCompleteMandatory(mandatory.id) },
+                        onOpen = { onOpenTask(mandatory.id) }
                         )
                         reminderStatus?.let {
                             Spacer(Modifier.height(12.dp))
@@ -519,7 +532,7 @@ private fun HomePageContent(
                     modifier = Modifier.heightIn(max = 140.dp)
                 ) {
                     items(bonusTasks, key = { it.id }) { task ->
-                        BonusTaskRow(task = task, onDone = { onCompleteBonus(task.id) })
+                        BonusTaskRow(task = task, onDone = { onCompleteBonus(task.id) }, onOpen = { onOpenTask(task.id) })
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -587,7 +600,7 @@ private fun PullToAddIndicator(progress: Float, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun OneThingHero(task: Task, accent: Color, onDone: () -> Unit) {
+private fun OneThingHero(task: Task, accent: Color, onDone: () -> Unit, onOpen: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
@@ -608,7 +621,8 @@ private fun OneThingHero(task: Task, accent: Color, onDone: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Spacer(Modifier.height(40.dp))
+        TextButton(onClick = onOpen) { Text(stringResource(R.string.task_details)) }
+        Spacer(Modifier.height(16.dp))
         Box(
             modifier = Modifier
                 .size(96.dp)
@@ -668,11 +682,12 @@ private fun DayCompleteHero(accent: Color) {
 }
 
 @Composable
-private fun BonusTaskRow(task: Task, onDone: () -> Unit) {
+private fun BonusTaskRow(task: Task, onDone: () -> Unit, onOpen: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+            .clickable(onClick = onOpen)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
