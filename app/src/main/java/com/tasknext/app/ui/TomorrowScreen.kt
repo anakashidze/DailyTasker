@@ -1,5 +1,8 @@
 package com.tasknext.app.ui
 
+import androidx.compose.ui.platform.LocalContext
+import com.tasknext.app.data.TaskGroups
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown

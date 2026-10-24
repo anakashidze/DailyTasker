@@ -3,6 +3,8 @@ package com.tasknext.app.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalContext
 import android.content.Intent
@@ -233,14 +235,18 @@ fun SettingsScreen(
             onDismissRequest = { showThemePicker = false },
             title = { Text(stringResource(R.string.appearance)) },
             text = {
-                Column {
+                Column(Modifier.selectableGroup()) {
                     ThemeMode.entries.forEach { mode ->
-                        Row(Modifier.fillMaxWidth().clickable {
-                            themeMode = mode
-                            settings.themeMode = mode
-                            onThemeChanged(mode)
-                            showThemePicker = false
-                        }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().selectable(
+                            selected = mode == themeMode,
+                            role = Role.RadioButton,
+                            onClick = {
+                                themeMode = mode
+                                settings.themeMode = mode
+                                onThemeChanged(mode)
+                                showThemePicker = false
+                            }
+                        ).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = mode == themeMode, onClick = null)
                             Text(themeModeLabel(mode), Modifier.padding(start = 12.dp).heightIn(min = 48.dp).wrapContentHeight())
                         }

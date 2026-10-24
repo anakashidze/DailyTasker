@@ -18,6 +18,21 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE id = :id AND isArchived = 0")
     fun observeTask(id: Long): Flow<Task?>
     @Insert suspend fun insert(task: Task): Long
+    // Keep the read and write in one Room transaction: a reminder action or reorder
+    // must not race an editor and restore an archived task or an obsolete slot.
+    @Transaction
+    suspend fun updateTaskDetails(task: Task, todayLocked: Boolean) {
+        val existing = getById(task.id) ?: return
+        if (existing.isArchived || (existing.slot == 0 && todayLocked)) return
+        val edited = existing.copy(title = task.title, colorHex = task.colorHex,
+            groupName = task.groupName, groupIcon = task.groupIcon, taskSize = task.taskSize,
+            comment = task.comment, reminderEnabled = task.reminderEnabled,
+            reminderHour = task.reminderHour, reminderMinute = task.reminderMinute)
+        val sizeNoLongerFits = (edited.taskSize == TaskSize.SMALL && existing.slot == 0) ||
+            (edited.taskSize == TaskSize.BIG && existing.slot != null && existing.slot != 0)
+        update(if (sizeNoLongerFits) edited.copy(slot = null, overdueSinceEpochDay = null) else edited)
+    }
+
     @Update suspend fun update(task: Task)
     @Update suspend fun updateTasks(tasks: List<Task>)
     @Query("DELETE FROM tasks WHERE id = :id")
