@@ -1,6 +1,7 @@
 package com.tasknext.app
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -11,6 +12,7 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
@@ -18,6 +20,8 @@ import androidx.core.view.WindowCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import java.util.Locale
+import com.tasknext.app.data.AppLocale
 import com.tasknext.app.ui.HistoryScreen
 import com.tasknext.app.ui.HomeScreen
 import com.tasknext.app.ui.SettingsScreen
@@ -28,6 +32,12 @@ import com.tasknext.app.viewmodel.TaskViewModel
 
 class MainActivity : ComponentActivity() {
 
+    override fun attachBaseContext(newBase: Context) {
+        AppLocale.initialize(newBase)
+        Locale.setDefault(Locale.forLanguageTag(AppLocale.languageCode(newBase)))
+        super.attachBaseContext(AppLocale.localizedContext(newBase))
+    }
+
     private val viewModel: TaskViewModel by viewModels()
 
     private val requestPermissionLauncher =
@@ -36,11 +46,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (viewModel.settings.notificationsEnabled) {
-            requestNotificationPermissionIfNeeded()
-        }
-
         setContent {
+            LaunchedEffect(viewModel) {
+                viewModel.notificationPermissionRequests.collect { requestNotificationPermissionIfNeeded() }
+            }
             var darkTheme by remember { mutableStateOf(viewModel.settings.darkTheme) }
 
             TaskNextTheme(darkTheme = darkTheme) {
@@ -83,9 +92,11 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             viewModel = viewModel,
                             onBack = { navController.popBackStack() },
-                            onOpenHistory = { navController.navigate("history") },
                             onDarkThemeChanged = { darkTheme = it },
-                            onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() }
+                            onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() },
+                            onLanguageChanged = {
+                                if (Build.VERSION.SDK_INT < 33) recreate()
+                            }
                         )
                     }
                     composable("history") {

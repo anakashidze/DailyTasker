@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tasknext.app.data.AppDatabase
-import com.tasknext.app.data.Priority
+import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.SettingsStore
 import com.tasknext.app.data.Task
 import com.tasknext.app.data.TaskGroupDefinition
@@ -12,6 +12,8 @@ import com.tasknext.app.data.TaskGroups
 import com.tasknext.app.data.TaskRepository
 import com.tasknext.app.notifications.NotificationScheduler
 import com.tasknext.app.widget.TodayTaskWidget
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +26,12 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getInstance(application).taskDao()
     val settings = SettingsStore(application)
     private val repo = TaskRepository(dao, settings)
+    private val permissionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val notificationPermissionRequests = permissionRequests.asSharedFlow()
+
+    private fun requestTaskNotificationPermission(task: Task) {
+        if (task.slot != null && task.reminderEnabled && settings.notificationsEnabled) permissionRequests.tryEmit(Unit)
+    }
 
     val mandatoryTask: StateFlow<Task?> = repo.observeActiveSlots()
         .map { slots -> slots.firstOrNull { it.slot == 0 } }
@@ -51,8 +59,14 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val _dayComplete = MutableStateFlow(false)
     val dayComplete: StateFlow<Boolean> = _dayComplete
 
-    private val _streakCount = MutableStateFlow(repo.currentStreakCount())
+    private val _streakCount = MutableStateFlow(0)
     val streakCount: StateFlow<Int> = _streakCount
+
+    private val _restCredits = MutableStateFlow(0)
+    val restCredits: StateFlow<Int> = _restCredits
+
+    private val _restToday = MutableStateFlow(false)
+    val restToday: StateFlow<Boolean> = _restToday
 
     private val _showTomorrowPicker = MutableStateFlow(false)
     val showTomorrowPicker: StateFlow<Boolean> = _showTomorrowPicker
@@ -62,14 +76,14 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun refreshTodayWidget() = TodayTaskWidget.requestUpdate(getApplication())
 
-    init {
-        onAppResumed()
-    }
+    init { onAppResumed() }
 
     fun onAppResumed() = viewModelScope.launch {
         repo.rolloverDayIfNeeded()
         _dayComplete.value = repo.isDayComplete()
         _streakCount.value = repo.currentStreakCount()
+        _restCredits.value = repo.availableRestCredits()
+        _restToday.value = repo.isRestToday()
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         syncReminderAlarms()
         refreshTodayWidget()
@@ -80,7 +94,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         colorHex: String,
         groupName: String,
         groupIcon: String,
-        priority: Priority,
+        taskSize: TaskSize,
         comment: String,
         reminderEnabled: Boolean,
         hour: Int?,
@@ -92,7 +106,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 colorHex = colorHex,
                 groupName = groupName,
                 groupIcon = groupIcon,
-                priority = priority,
+                taskSize = taskSize,
                 comment = comment,
                 reminderEnabled = reminderEnabled,
                 reminderHour = hour,
@@ -105,7 +119,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateTask(task: Task) = viewModelScope.launch {
         repo.updateTask(task)
-        syncTaskReminder(task)
+        repo.getTask(task.id)?.let { syncTaskReminder(it) }
+        syncDailyReminderAlarms()
         refreshTodayWidget()
     }
 
@@ -120,26 +135,18 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun removeCustomGroup(group: TaskGroupDefinition) = viewModelScope.launch {
-        // Built-in groups are intentionally immutable and can never be removed.
         if (group.builtIn || TaskGroups.builtIns.any { it.name.equals(group.name, ignoreCase = true) }) return@launch
-
         val defaultGroup = TaskGroups.default
         repo.reassignRemovedGroup(group.name, defaultGroup)
-
-        val custom = settings.customGroups
-            .filterNot { it.name.equals(group.name, ignoreCase = true) }
+        val custom = settings.customGroups.filterNot { it.name.equals(group.name, ignoreCase = true) }
         settings.customGroups = custom
         _taskGroups.value = TaskGroups.builtIns + custom
         refreshTodayWidget()
     }
 
-    fun deleteHistoryRecord(id: Long) = viewModelScope.launch {
-        repo.deleteHistoryRecord(id)
-    }
-
-    fun clearHistory() = viewModelScope.launch {
-        repo.clearHistory()
-    }
+    fun deleteHistoryRecord(id: Long) = viewModelScope.launch { repo.deleteHistoryRecord(id) }
+    fun restoreHistoryRecord(log: com.tasknext.app.data.CompletionLog) = viewModelScope.launch { dao.restoreHistoryRecord(log) }
+    fun clearHistory() = viewModelScope.launch { repo.clearHistory() }
 
     fun deleteTask(task: Task) = viewModelScope.launch {
         NotificationScheduler.cancel(getApplication(), task.id)
@@ -172,6 +179,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repo.getTask(task.id)?.let { syncTaskReminder(it) }
         _dayComplete.value = repo.isDayComplete()
         _streakCount.value = repo.currentStreakCount()
+        _restCredits.value = repo.availableRestCredits()
+        _restToday.value = repo.isRestToday()
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
         _showTomorrowPicker.value = false
         refreshTodayWidget()
@@ -184,7 +193,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun activateBonusFromPool(taskId: Long) = viewModelScope.launch {
         repo.activateBonusTask(taskId)
-        repo.getTask(taskId)?.let { syncTaskReminder(it) }
+        repo.getTask(taskId)?.let { syncTaskReminder(it); requestTaskNotificationPermission(it) }
     }
 
     fun moveBonusToBacklog(taskId: Long) = viewModelScope.launch {
@@ -201,10 +210,10 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun moveTodayToBacklogAt(taskId: Long, insertionIndex: Int) = viewModelScope.launch {
         NotificationScheduler.cancel(getApplication(), taskId)
-        val newTodayId = repo.moveTodayToBacklogAt(taskId, insertionIndex)
-        newTodayId?.let { id -> repo.getTask(id)?.let { syncTaskReminder(it) } }
+        repo.moveTodayToBacklogAt(taskId, insertionIndex)
         _dayComplete.value = false
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        syncDailyReminderAlarms()
         refreshTodayWidget()
     }
 
@@ -218,16 +227,14 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         refreshTodayWidget()
     }
 
-    fun replaceTodayWith(
-        taskId: Long,
-        backlogOrderAfterSwap: List<Long>? = null
-    ) = viewModelScope.launch {
+    fun replaceTodayWith(taskId: Long, backlogOrderAfterSwap: List<Long>? = null) = viewModelScope.launch {
         val previousToday = mandatoryTask.value
-        repo.replaceMandatoryWith(taskId, backlogOrderAfterSwap)
+        if (!repo.replaceMandatoryWith(taskId, backlogOrderAfterSwap)) return@launch
         previousToday?.let { NotificationScheduler.cancel(getApplication(), it.id) }
-        repo.getTask(taskId)?.let { syncTaskReminder(it) }
+        repo.getTask(taskId)?.let { syncTaskReminder(it); requestTaskNotificationPermission(it) }
         _dayComplete.value = false
         _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        syncDailyReminderAlarms()
         refreshTodayWidget()
     }
 
@@ -237,16 +244,10 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         if (previousSlot == 0) {
             _dayComplete.value = true
             _streakCount.value = repo.currentStreakCount()
-            if (settings.autoFillNextTask) {
-                repo.suggestNext()?.let { repo.setTomorrowTask(it.id) }
-                _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
-                _showTomorrowPicker.value = false
-            } else {
-                _showTomorrowPicker.value = true
-            }
-        } else {
-            _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+            _showTomorrowPicker.value = false
         }
+        _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
+        _restCredits.value = repo.availableRestCredits()
         refreshTodayWidget()
     }
 
@@ -255,25 +256,56 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repo.completeMandatory(taskId)
         _dayComplete.value = true
         _streakCount.value = repo.currentStreakCount()
-
-        if (settings.autoFillNextTask) {
-            repo.suggestNext()?.let { repo.setTomorrowTask(it.id) }
-            _queuedTomorrowTaskId.value = repo.queuedTomorrowTaskId()
-            _showTomorrowPicker.value = false
-        } else {
-            _showTomorrowPicker.value = true
-        }
+        _showTomorrowPicker.value = false
+        _queuedTomorrowTaskId.value = -1L
+        _restCredits.value = repo.availableRestCredits()
+        _restToday.value = false
         refreshTodayWidget()
     }
 
     fun completeBonus(taskId: Long) = viewModelScope.launch {
         NotificationScheduler.cancel(getApplication(), taskId)
         repo.completeBonus(taskId)
+        _restCredits.value = repo.availableRestCredits()
         refreshTodayWidget()
     }
 
-    fun dismissTomorrowPicker() {
-        _showTomorrowPicker.value = false
+    fun completeOverdue(taskId: Long, completedYesterday: Boolean) = viewModelScope.launch {
+        NotificationScheduler.cancel(getApplication(), taskId)
+        repo.completeOverdue(taskId, completedYesterday)
+        _streakCount.value = repo.currentStreakCount()
+        _restCredits.value = repo.availableRestCredits()
+        refreshTodayWidget()
+    }
+
+    fun useRestCreditToday() = viewModelScope.launch {
+        if (repo.useRestCreditToday()) {
+            _dayComplete.value = true
+            _restToday.value = true
+            _restCredits.value = repo.availableRestCredits()
+            _streakCount.value = repo.currentStreakCount()
+            refreshTodayWidget()
+        }
+    }
+
+    fun recoverHistoryRecord(logId: Long) = viewModelScope.launch {
+        repo.recoverHistoryRecord(logId)
+        _restCredits.value = repo.availableRestCredits()
+        refreshTodayWidget()
+    }
+
+    fun dismissTomorrowPicker() { _showTomorrowPicker.value = false }
+
+    fun isTodayLocked(): Boolean = repo.isTodayLocked()
+
+    fun chooseToday(taskId: Long) = viewModelScope.launch {
+        val previousToday = mandatoryTask.value
+        if (!repo.replaceMandatoryWith(taskId)) return@launch
+        previousToday?.let { NotificationScheduler.cancel(getApplication(), it.id) }
+        repo.getTask(taskId)?.let { syncTaskReminder(it); requestTaskNotificationPermission(it) }
+        _dayComplete.value = false
+        syncDailyReminderAlarms()
+        refreshTodayWidget()
     }
 
     fun setTomorrowTask(taskId: Long) = viewModelScope.launch {
@@ -297,12 +329,27 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { syncReminderAlarms() }
     }
 
-    fun setSnoozeMinutes(minutes: Int) {
-        settings.snoozeMinutes = minutes.coerceIn(1, 24 * 60)
+    fun setSnoozeMinutes(minutes: Int) { settings.snoozeMinutes = minutes.coerceIn(1, 24 * 60) }
+
+    fun rescheduleDailyReminders() = viewModelScope.launch {
+        syncDailyReminderAlarms()
+    }
+
+    private suspend fun syncDailyReminderAlarms() {
+        val tasks = repo.getAllTasksOnce()
+        val todayTask = tasks.firstOrNull {
+            !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
+        }
+        NotificationScheduler.syncDailyReminders(getApplication(), settings, todayTask)
     }
 
     private suspend fun syncReminderAlarms() {
-        repo.getAllTasksOnce().forEach { syncTaskReminder(it) }
+        val tasks = repo.getAllTasksOnce()
+        tasks.forEach { syncTaskReminder(it) }
+        val todayTask = tasks.firstOrNull {
+            !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
+        }
+        NotificationScheduler.syncDailyReminders(getApplication(), settings, todayTask)
     }
 
     private fun syncTaskReminder(task: Task) {
