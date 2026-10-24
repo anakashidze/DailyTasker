@@ -403,9 +403,10 @@ private fun HomePageContent(
                 Text(
                     DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault()).format(clock.toLocalDate()),
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f).padding(end = 12.dp)
                 )
-                Column(horizontalAlignment = Alignment.End) {
+                Column(Modifier.widthIn(max = 144.dp), horizontalAlignment = Alignment.End) {
                     Text(
                         stringResource(R.string.streak),
                         style = MaterialTheme.typography.labelSmall,
@@ -528,13 +529,13 @@ private fun HomePageContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                TextButton(onClick = onOpenTasks) { Text(stringResource(R.string.tasks)) }
-                FilledTonalButton(onClick = onAddTask) {
+                TextButton(onClick = onOpenTasks, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.tasks)) }
+                FilledTonalButton(onClick = onAddTask, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.add_task))
+                    Text(stringResource(R.string.add))
                 }
-                TextButton(onClick = onOpenHistory) { Text(stringResource(R.string.history)) }
+                TextButton(onClick = onOpenHistory, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.history)) }
             }
         }
     }

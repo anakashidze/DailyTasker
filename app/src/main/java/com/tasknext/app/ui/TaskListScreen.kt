@@ -5,7 +5,11 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,7 +74,7 @@ private class FloatingTask(val task: Task, val origin: TaskPlacement, val tag: S
     var targetIndex by mutableIntStateOf(origin.index)
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
     // One Room snapshot keeps IDs unique while tasks cross section boundaries.
@@ -266,6 +270,7 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
         floating?.takeIf { !it.released }?.let { drag -> drag.top += delta; updatePreview(drag) }
     })
     val endDrag by rememberUpdatedState<(Boolean) -> Unit>({ finishDrag(it) })
+    val hasActiveDrag by rememberUpdatedState<() -> Boolean>({ floating?.released == false })
     DisposableEffect(Unit) { onDispose { autoScrollJob?.cancel() } }
 
     @Composable
@@ -321,13 +326,31 @@ fun TaskListScreen(viewModel: TaskViewModel, onBack: () -> Unit) {
                 modifier = Modifier.padding(padding).fillMaxSize()
                     .onGloballyPositioned { listBounds = it.boundsInRoot() }
                     .pointerInput(Unit) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { startDrag(it) },
-                            onDragEnd = { endDrag(false) },
-                            onDragCancel = { endDrag(true) }
-                        ) { change, amount ->
-                            change.consume()
-                            moveDrag(amount.y)
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val held = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+                            startDrag(held.position)
+                            if (!hasActiveDrag()) return@awaitEachGesture
+                            var released = false
+                            try {
+                                while (true) {
+                                    // Once the hold wins, consume before the LazyColumn's
+                                    // scrollable and card swipe handlers can take the move.
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (event.changes.any { it.id != down.id && it.pressed }) break
+                                    if (!change.pressed) {
+                                        change.consume()
+                                        endDrag(false)
+                                        released = true
+                                        break
+                                    }
+                                    moveDrag(change.position.y - change.previousPosition.y)
+                                    change.consume()
+                                }
+                            } finally {
+                                if (!released) endDrag(true)
+                            }
                         }
                     }.padding(horizontal = 12.dp),
                 contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),

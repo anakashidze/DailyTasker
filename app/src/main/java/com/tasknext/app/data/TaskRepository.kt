@@ -188,11 +188,10 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
     }
 
     suspend fun reorderPool(orderedIds: List<Long>) {
-        orderedIds.forEachIndexed { index, id ->
-            dao.getById(id)?.takeIf { it.slot == null && it.overdueSinceEpochDay == null }?.let {
-                dao.update(it.copy(orderIndex = index))
-            }
-        }
+        val candidates = dao.getAllOnce().filter { it.slot == null && it.overdueSinceEpochDay == null }.associateBy { it.id }
+        val reordered = orderedIds.distinct().mapIndexedNotNull { index, id -> candidates[id]?.copy(orderIndex = index) }
+        // Room updates this batch in one transaction: no partially reordered emissions.
+        dao.updateTasks(reordered)
     }
 
     suspend fun activateBonusTask(taskId: Long) {

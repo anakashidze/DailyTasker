@@ -64,7 +64,9 @@ class TaskDragTest {
         rule.mainClock.advanceTimeByFrame()
         node.performTouchInput { moveBy(Offset(0f, delta / 2)) }
         rule.mainClock.advanceTimeByFrame()
-        return first.top to rule.onNodeWithTag("drag-overlay").fetchSemanticsNode().boundsInRoot.top
+        val releaseTop = rule.onNodeWithTag("drag-overlay").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("The held card must follow the finger: original=${first.top}, moved=$releaseTop", releaseTop > first.top + delta / 2)
+        return first.top to releaseTop
     }
 
     @Test fun releaseKeepsCardAtFingerAndCommitsNewOrder() {
