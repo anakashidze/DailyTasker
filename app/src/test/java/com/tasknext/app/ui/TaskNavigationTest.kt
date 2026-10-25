@@ -58,6 +58,7 @@ class TaskNavigationTest {
     @Test fun reminderOpensFromSettingsAndDoesNotReplayAfterDismissAndRecreate() {
         val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Read this reminder", comment = "Full details", reminderEnabled = false)) }
         rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithText("Appearance").assertExists()
         rule.runOnIdle { InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(activity, TaskDestination.intent(activity, id)) }
         rule.waitUntil(5000) { rule.onAllNodesWithText("Full details").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Task details").assertIsDisplayed()
@@ -73,7 +74,14 @@ class TaskNavigationTest {
     @Test fun lockedTaskIsReadableAndDeletedDestinationShowsExplanation() {
         val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Locked main", slot = 0, reminderEnabled = false)) }
         rule.runOnIdle { InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(activity, TaskDestination.intent(activity, id)) }
-        rule.waitUntil(5000) { rule.onAllNodesWithText("Today is locked. You can still read the details and complete the task from Today.").fetchSemanticsNodes().isNotEmpty() }
+        try {
+            rule.waitUntil(5000) { rule.onAllNodesWithText("Today is locked. You can still read the details and complete the task from Today.").fetchSemanticsNodes().isNotEmpty() }
+        } catch (failure: Throwable) {
+            println("LOCKED TASK UI: " + rule.onRoot(useUnmergedTree = true).printToString())
+            println("LOCKED TASK DB: " + runBlocking(Dispatchers.IO) { db.taskDao().getById(id) })
+            println("LOCK SETTINGS: " + SettingsStore(activity).todayLockHour + ":" + SettingsStore(activity).todayLockMinute)
+            throw failure
+        }
         rule.onNodeWithText("Edit task").assertDoesNotExist()
         runBlocking(Dispatchers.IO) { db.taskDao().delete(id) }
         rule.waitUntil(5000) { rule.onAllNodesWithText("This task was completed or removed. Close this window to see Today.").fetchSemanticsNodes().isNotEmpty() }
