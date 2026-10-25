@@ -83,3 +83,12 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+
+// Fail with usable diagnostics instead of leaving a stalled UI test running for hours.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    timeout.set(java.time.Duration.ofMinutes(8))
+    testLogging {
+        events("started", "passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}

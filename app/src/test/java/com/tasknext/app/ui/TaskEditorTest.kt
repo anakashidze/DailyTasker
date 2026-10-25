@@ -15,7 +15,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w411dp-h891dp")
+// Dialog + TextField can oscillate under synthetic w/h qualifiers in Robolectric (#8460).
+@Config(sdk = [28])
 class TaskEditorTest {
     @get:Rule val rule = createComposeRule()
 

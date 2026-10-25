@@ -17,10 +17,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.LooperMode
 import java.time.LocalDate
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w411dp-h891dp")
+@Config(sdk = [28])
+@LooperMode(LooperMode.Mode.INSTRUMENTATION_TEST)
 class TaskNavigationTest {
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
     private lateinit var db: AppDatabase

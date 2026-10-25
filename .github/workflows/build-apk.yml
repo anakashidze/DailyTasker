@@ -16,6 +16,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Check out source
@@ -40,6 +41,7 @@ jobs:
           cache-provider: basic
 
       - name: Run regression tests
+        timeout-minutes: 10
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload test results and Room schema
