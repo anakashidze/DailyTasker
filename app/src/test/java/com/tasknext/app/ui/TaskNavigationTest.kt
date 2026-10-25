@@ -49,7 +49,7 @@ class TaskNavigationTest {
         }
     }).around(rule)
 
-    @Test fun reminderOpensFromSettingsAndDoesNotReplayAfterDismissAndRecreate() {
+    @Test(timeout = 60000) fun reminderOpensFromSettingsAndDoesNotReplayAfterDismissAndRecreate() {
         val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Read this reminder", comment = "Full details", reminderEnabled = false)) }
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.runOnIdle { InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(rule.activity, TaskDestination.intent(rule.activity, id)) }
@@ -64,7 +64,7 @@ class TaskNavigationTest {
         rule.onNodeWithText("Task details").assertIsDisplayed()
     }
 
-    @Test fun lockedTaskIsReadableAndDeletedDestinationShowsExplanation() {
+    @Test(timeout = 60000) fun lockedTaskIsReadableAndDeletedDestinationShowsExplanation() {
         val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Locked main", slot = 0, reminderEnabled = false)) }
         rule.runOnIdle { InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(rule.activity, TaskDestination.intent(rule.activity, id)) }
         rule.waitUntil(5000) { rule.onAllNodesWithText("Today is locked. You can still read the details and complete the task from Today.").fetchSemanticsNodes().isNotEmpty() }
@@ -74,7 +74,7 @@ class TaskNavigationTest {
         rule.onNodeWithText("Edit task").assertDoesNotExist()
     }
 
-    @Test fun reminderClosesTheTaskListDialogBeforeShowingItsDestination() {
+    @Test(timeout = 60000) fun reminderClosesTheTaskListDialogBeforeShowingItsDestination() {
         val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Requested task", comment = "Reminder details", reminderEnabled = false)) }
         rule.onNodeWithText("Tasks").performClick()
         rule.onNodeWithContentDescription("Add task").performClick()
