@@ -17,12 +17,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.annotation.LooperMode
 import java.time.LocalDate
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
-@LooperMode(LooperMode.Mode.INSTRUMENTATION_TEST)
 class TaskNavigationTest {
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
     private lateinit var db: AppDatabase
@@ -47,7 +45,7 @@ class TaskNavigationTest {
         rule.waitUntil(5000) { rule.onAllNodesWithText("Full details").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Task details").assertIsDisplayed()
         rule.onNodeWithText("Close").performClick()
-        rule.activityRule.scenario.recreate()
+        rule.runOnIdle { rule.activity.recreate() }
         rule.onNodeWithText("Full details").assertDoesNotExist()
         // The same reminder can be opened again while the Activity is already running.
         rule.runOnIdle { InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(rule.activity, TaskDestination.intent(rule.activity, id)) }

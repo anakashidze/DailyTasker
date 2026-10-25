@@ -137,24 +137,6 @@ fun AddEditTaskDialog(
     val groupNameFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    LaunchedEffect(existing?.id) {
-        if (existing == null) {
-            // Let the dialog and text field enter the composition before requesting focus.
-            withFrameNanos { }
-            titleFocusRequester.requestFocus()
-            withFrameNanos { }
-            keyboardController?.show()
-        }
-    }
-    LaunchedEffect(showNewGroup, showOptions) {
-        if (showNewGroup && showOptions) {
-            withFrameNanos { }
-            groupNameFocusRequester.requestFocus()
-            withFrameNanos { }
-            keyboardController?.show()
-        }
-    }
-
     val menuGroups = remember(availableGroups, selectedGroup) {
         if (availableGroups.any { it.name.equals(selectedGroup.name, ignoreCase = true) }) {
             availableGroups
@@ -173,6 +155,26 @@ fun AddEditTaskDialog(
             )
         },
         text = {
+            // Dialog content has its own composition. Request focus here only after
+            // the field modifiers have attached, including after state restoration.
+            LaunchedEffect(existing?.id) {
+                if (existing == null) {
+                    // Let the dialog and text field enter the composition before requesting focus.
+                    withFrameNanos { }
+                    titleFocusRequester.requestFocus()
+                    withFrameNanos { }
+                    keyboardController?.show()
+                }
+            }
+            LaunchedEffect(showNewGroup, showOptions) {
+                if (showNewGroup && showOptions) {
+                    withFrameNanos { }
+                    groupNameFocusRequester.requestFocus()
+                    withFrameNanos { }
+                    keyboardController?.show()
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .heightIn(max = 560.dp)
