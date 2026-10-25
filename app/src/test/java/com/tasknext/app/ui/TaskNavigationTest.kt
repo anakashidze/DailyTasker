@@ -61,6 +61,20 @@ class TaskNavigationTest {
         }
     }
 
+    @Test fun reminderColdStartOpensTheRequestedTask() {
+        val id = runBlocking(Dispatchers.IO) {
+            db.taskDao().insert(Task(title = "Cold launch task", comment = "Cold launch details", reminderEnabled = false))
+        }
+        rule.runOnIdle {
+            controller.pause().stop().destroy()
+            controller = Robolectric.buildActivity(MainActivity::class.java,
+                TaskDestination.intent(RuntimeEnvironment.getApplication(), id))
+                .setup().windowFocusChanged(true)
+        }
+        rule.waitUntil(5000) { rule.onAllNodesWithText("Cold launch details").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Task details").assertIsDisplayed()
+    }
+
     @Test fun reminderOpensFromSettingsAndDoesNotReplayAfterDismissAndRecreate() {
         val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Read this reminder", comment = "Full details", reminderEnabled = false)) }
         rule.onNodeWithContentDescription("Settings").performClick()

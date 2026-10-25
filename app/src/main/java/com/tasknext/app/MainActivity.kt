@@ -20,6 +20,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.navigation.createGraph
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -86,51 +87,53 @@ class MainActivity : ComponentActivity() {
                     if (openRequest != null) goHome()
                 }
 
-                NavHost(
-                    navController = navController,
-                    startDestination = "home"
-                ) {
-                    composable("home") { entry ->
-                        val homeLifecycle by entry.lifecycle.currentStateFlow.collectAsState()
-                        HomeScreen(
-                            viewModel = viewModel,
-                            // Consume only after navigation has resumed Home. An outgoing
-                            // or transitioning entry must not display/consume the request.
-                            openRequest = openRequest.takeIf { homeLifecycle == Lifecycle.State.RESUMED },
-                            onOpenRequestHandled = { openRequest = null },
-                            onOpenSettings = { navController.navigate("settings") { launchSingleTop = true } }
-                        )
-                    }
-                    composable("list") {
-                        TaskListScreen(
-                            viewModel = viewModel,
-                            onBack = { goHome() }
-                        )
-                    }
-                    composable("tomorrow") {
-                        TomorrowScreen(
-                            viewModel = viewModel,
-                            onBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable("settings") {
-                        SettingsScreen(
-                            viewModel = viewModel,
-                            onBack = { navController.popBackStack() },
-                            onThemeChanged = { themeMode = it },
-                            onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() },
-                            onLanguageChanged = {
-                                if (Build.VERSION.SDK_INT < 33) recreate()
-                            }
-                        )
-                    }
-                    composable("history") {
-                        HistoryScreen(
-                            viewModel = viewModel,
-                            onBack = { goHome() }
-                        )
+                // Keep destination identities stable when a new Intent or theme change
+                // recomposes this scope, including while a pop transition is running.
+                val graph = remember(navController) {
+                    navController.createGraph(startDestination = "home") {
+                        composable("home") { entry ->
+                            val homeLifecycle by entry.lifecycle.currentStateFlow.collectAsState()
+                            HomeScreen(
+                                viewModel = viewModel,
+                                // Consume only after navigation has resumed Home. An outgoing
+                                // or transitioning entry must not display/consume the request.
+                                openRequest = openRequest.takeIf { homeLifecycle == Lifecycle.State.RESUMED },
+                                onOpenRequestHandled = { openRequest = null },
+                                onOpenSettings = { navController.navigate("settings") { launchSingleTop = true } }
+                            )
+                        }
+                        composable("list") {
+                            TaskListScreen(
+                                viewModel = viewModel,
+                                onBack = { goHome() }
+                            )
+                        }
+                        composable("tomorrow") {
+                            TomorrowScreen(
+                                viewModel = viewModel,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("settings") {
+                            SettingsScreen(
+                                viewModel = viewModel,
+                                onBack = { navController.popBackStack() },
+                                onThemeChanged = { themeMode = it },
+                                onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() },
+                                onLanguageChanged = {
+                                    if (Build.VERSION.SDK_INT < 33) recreate()
+                                }
+                            )
+                        }
+                        composable("history") {
+                            HistoryScreen(
+                                viewModel = viewModel,
+                                onBack = { goHome() }
+                            )
+                        }
                     }
                 }
+                NavHost(navController = navController, graph = graph)
             }
         }
     }
