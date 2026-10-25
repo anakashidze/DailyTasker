@@ -42,7 +42,19 @@ jobs:
 
       - name: Run regression tests
         timeout-minutes: 10
-        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+        shell: bash
+        run: |
+          mkdir -p app/build/diagnostics
+          (
+            sleep 180
+            jps -lv > app/build/diagnostics/java-processes.txt
+            for pid in $(jps -l | awk '$2 == "worker.org.gradle.process.internal.worker.GradleWorkerMain" {print $1}'); do
+              jstack -l "$pid" > "app/build/diagnostics/test-worker-$pid.txt" || true
+            done
+          ) &
+          diagnostic_pid=$!
+          trap 'kill "$diagnostic_pid" 2>/dev/null || true' EXIT
+          gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload test results and Room schema
         if: always()
@@ -53,6 +65,7 @@ jobs:
             app/build/test-results/testDebugUnitTest
             app/build/reports/tests/testDebugUnitTest
             app/schemas
+            app/build/diagnostics
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace

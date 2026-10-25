@@ -33,6 +33,7 @@ class TaskDestinationTest {
         assertNotNull(TaskDestination.request(today))
         assertNull(TaskDestination.request(today)?.taskId)
         assertTrue(today.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP != 0)
+        assertTrue(today.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
         assertNull(TaskDestination.request(Intent(context, MainActivity::class.java)))
     }
 }

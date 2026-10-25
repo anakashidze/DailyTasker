@@ -11,10 +11,14 @@ import com.tasknext.app.data.SettingsStore
 import com.tasknext.app.data.Task
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.rules.ExternalResource
+import org.junit.rules.RuleChain
+import androidx.room.Room
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.util.ReflectionHelpers
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.LocalDate
@@ -22,24 +26,31 @@ import java.time.LocalDate
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class TaskNavigationTest {
-    @get:Rule val rule = createAndroidComposeRule<MainActivity>()
+    val rule = createAndroidComposeRule<MainActivity>()
     private lateinit var db: AppDatabase
-    @Before fun setup() {
-        rule.waitForIdle()
-        val context = rule.activity.applicationContext
-        context.getSharedPreferences("tasknext_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        SettingsStore(context).apply {
-            notificationsEnabled = false
-            lastActiveEpochDay = LocalDate.now().toEpochDay()
-            todayLockHour = 0
-            todayLockMinute = 0
+    // Prepare application state before ActivityScenario launches MainActivity. Each
+    // test owns a fresh Room instance rather than a singleton from another sandbox.
+    @get:Rule val fixture = RuleChain.outerRule(object : ExternalResource() {
+        override fun before() {
+            val context = RuntimeEnvironment.getApplication() as Context
+            context.getSharedPreferences("tasknext_settings", Context.MODE_PRIVATE).edit().clear().commit()
+            SettingsStore(context).apply {
+                notificationsEnabled = false
+                lastActiveEpochDay = LocalDate.now().toEpochDay()
+                todayLockHour = 0
+                todayLockMinute = 0
+            }
+            db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+            ReflectionHelpers.setStaticField(AppDatabase::class.java, "INSTANCE", db)
         }
-        db = AppDatabase.getInstance(context)
-        runBlocking(Dispatchers.IO) { db.clearAllTables() }
-    }
+        override fun after() {
+            db.close()
+            ReflectionHelpers.setStaticField(AppDatabase::class.java, "INSTANCE", null)
+        }
+    }).around(rule)
 
     @Test fun reminderOpensFromSettingsAndDoesNotReplayAfterDismissAndRecreate() {
-        val id = runBlocking { db.taskDao().insert(Task(title = "Read this reminder", comment = "Full details", reminderEnabled = false)) }
+        val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Read this reminder", comment = "Full details", reminderEnabled = false)) }
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.runOnIdle { InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(rule.activity, TaskDestination.intent(rule.activity, id)) }
         rule.waitUntil(5000) { rule.onAllNodesWithText("Full details").fetchSemanticsNodes().isNotEmpty() }
@@ -54,17 +65,17 @@ class TaskNavigationTest {
     }
 
     @Test fun lockedTaskIsReadableAndDeletedDestinationShowsExplanation() {
-        val id = runBlocking { db.taskDao().insert(Task(title = "Locked main", slot = 0, reminderEnabled = false)) }
+        val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Locked main", slot = 0, reminderEnabled = false)) }
         rule.runOnIdle { InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(rule.activity, TaskDestination.intent(rule.activity, id)) }
         rule.waitUntil(5000) { rule.onAllNodesWithText("Today is locked. You can still read the details and complete the task from Today.").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Edit task").assertDoesNotExist()
-        runBlocking { db.taskDao().delete(id) }
+        runBlocking(Dispatchers.IO) { db.taskDao().delete(id) }
         rule.waitUntil(5000) { rule.onAllNodesWithText("This task was completed or removed. Close this window to see Today.").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Edit task").assertDoesNotExist()
     }
 
     @Test fun reminderClosesTheTaskListDialogBeforeShowingItsDestination() {
-        val id = runBlocking { db.taskDao().insert(Task(title = "Requested task", comment = "Reminder details", reminderEnabled = false)) }
+        val id = runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Requested task", comment = "Reminder details", reminderEnabled = false)) }
         rule.onNodeWithText("Tasks").performClick()
         rule.onNodeWithContentDescription("Add task").performClick()
         rule.onNodeWithText("Title").assertExists()

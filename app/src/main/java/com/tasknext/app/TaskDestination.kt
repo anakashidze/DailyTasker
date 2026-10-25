@@ -16,7 +16,7 @@ object TaskDestination {
             action = ACTION_OPEN
             // PendingIntent identity includes data, not extras. Keep each task distinct.
             data = Uri.parse("tasknext://open/${taskId ?: "today"}")
-            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             taskId?.let { putExtra(EXTRA_ID, it) }
         }
 
