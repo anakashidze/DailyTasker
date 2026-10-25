@@ -11,6 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
@@ -74,6 +76,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val navController = rememberNavController()
                 fun goHome() {
+                    if (navController.currentDestination?.route == "home") return
                     if (!navController.popBackStack("home", inclusive = false)) {
                         navController.navigate("home") { launchSingleTop = true }
                     }
@@ -87,10 +90,13 @@ class MainActivity : ComponentActivity() {
                     navController = navController,
                     startDestination = "home"
                 ) {
-                    composable("home") {
+                    composable("home") { entry ->
+                        val homeLifecycle by entry.lifecycle.currentStateFlow.collectAsState()
                         HomeScreen(
                             viewModel = viewModel,
-                            openRequest = openRequest,
+                            // Consume only after navigation has resumed Home. An outgoing
+                            // or transitioning entry must not display/consume the request.
+                            openRequest = openRequest.takeIf { homeLifecycle == Lifecycle.State.RESUMED },
                             onOpenRequestHandled = { openRequest = null },
                             onOpenSettings = { navController.navigate("settings") { launchSingleTop = true } }
                         )
