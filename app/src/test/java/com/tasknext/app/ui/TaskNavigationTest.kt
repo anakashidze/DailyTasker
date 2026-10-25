@@ -60,7 +60,16 @@ class TaskNavigationTest {
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.onNodeWithText("Appearance").assertExists()
         rule.runOnIdle { InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(activity, TaskDestination.intent(activity, id)) }
-        rule.waitUntil(5000) { rule.onAllNodesWithText("Full details").fetchSemanticsNodes().isNotEmpty() }
+        try {
+            rule.waitUntil(5000) { rule.onAllNodesWithText("Full details").fetchSemanticsNodes().isNotEmpty() }
+        } catch (failure: Throwable) {
+            // Freeze automatic frame advancement to inspect the tree that keeps
+            // the Robolectric idling loop busy; the original failure still fails.
+            rule.mainClock.autoAdvance = false
+            println("REMINDER TASK DB: " + runBlocking(Dispatchers.IO) { db.taskDao().getById(id) })
+            println("REMINDER UI: " + rule.onAllNodes(isRoot(), useUnmergedTree = true).printToString())
+            throw failure
+        }
         rule.onNodeWithText("Task details").assertIsDisplayed()
         rule.onNodeWithText("Close").performClick()
         rule.runOnIdle { controller.recreate() }
@@ -77,9 +86,9 @@ class TaskNavigationTest {
         try {
             rule.waitUntil(5000) { rule.onAllNodesWithText("Today is locked. You can still read the details and complete the task from Today.").fetchSemanticsNodes().isNotEmpty() }
         } catch (failure: Throwable) {
-            println("LOCKED TASK UI: " + rule.onRoot(useUnmergedTree = true).printToString())
             println("LOCKED TASK DB: " + runBlocking(Dispatchers.IO) { db.taskDao().getById(id) })
             println("LOCK SETTINGS: " + SettingsStore(activity).todayLockHour + ":" + SettingsStore(activity).todayLockMinute)
+            println("LOCKED TASK UI: " + rule.onAllNodes(isRoot(), useUnmergedTree = true).printToString())
             throw failure
         }
         rule.onNodeWithText("Edit task").assertDoesNotExist()
