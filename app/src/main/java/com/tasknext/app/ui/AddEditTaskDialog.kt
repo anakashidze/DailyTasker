@@ -16,18 +16,23 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import com.tasknext.app.data.SettingsStore
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.tasknext.app.data.Priority
+import com.tasknext.app.R
+import com.tasknext.app.data.TaskSize
 import com.tasknext.app.data.Task
 import com.tasknext.app.data.TaskGroupDefinition
 import com.tasknext.app.data.TaskGroups
@@ -57,8 +62,11 @@ private val groupIconChoices = listOf(
     "send", "notifications"
 )
 
-private fun priorityLabel(priority: Priority): String =
-    priority.name.lowercase().replaceFirstChar { it.uppercase() }
+@Composable
+private fun taskSizeLabel(taskSize: TaskSize): String = when (taskSize) {
+    TaskSize.BIG -> stringResource(R.string.task_size_big)
+    TaskSize.SMALL -> stringResource(R.string.task_size_small)
+}
 
 private fun parseColor(hex: String): Color = try {
     Color(android.graphics.Color.parseColor(hex))
@@ -79,15 +87,22 @@ fun AddEditTaskDialog(
     onSave: (
         title: String,
         group: TaskGroupDefinition,
-        priority: Priority,
+        taskSize: TaskSize,
         comment: String,
         reminderOn: Boolean,
         hour: Int?,
         minute: Int?
     ) -> Unit
 ) {
-    var title by remember(existing?.id) { mutableStateOf(existing?.title ?: "") }
-    var selectedGroup by remember(existing?.id) {
+    val context = LocalContext.current
+    val clock = rememberAppClock()
+    val notificationsAvailable = rememberNotificationAvailability()
+    var title by rememberSaveable(existing?.id) { mutableStateOf(existing?.title ?: "") }
+    var selectedGroup by rememberSaveable(existing?.id,
+        stateSaver = androidx.compose.runtime.saveable.listSaver(
+            save = { listOf(it.name, it.colorHex, it.iconKey, it.builtIn.toString()) },
+            restore = { TaskGroupDefinition(it[0], it[1], it[2], it[3].toBoolean()) }
+        )) {
         mutableStateOf(
             existing?.let {
                 TaskGroupDefinition(
@@ -98,47 +113,29 @@ fun AddEditTaskDialog(
             } ?: TaskGroups.default
         )
     }
-    var priority by remember(existing?.id) { mutableStateOf(existing?.priority ?: Priority.MEDIUM) }
-    var comment by remember(existing?.id) { mutableStateOf(existing?.comment ?: "") }
-    var reminderOn by remember(existing?.id) { mutableStateOf(existing?.reminderEnabled ?: true) }
-    var useDefaultTime by remember(existing?.id) {
+    var taskSize by rememberSaveable(existing?.id) { mutableStateOf(existing?.taskSize ?: TaskSize.BIG) }
+    var comment by rememberSaveable(existing?.id) { mutableStateOf(existing?.comment ?: "") }
+    var reminderOn by rememberSaveable(existing?.id) { mutableStateOf(existing?.reminderEnabled ?: true) }
+    var useDefaultTime by rememberSaveable(existing?.id) {
         mutableStateOf(existing == null || (existing.reminderHour == null && existing.reminderMinute == null))
     }
-    var hour by remember(existing?.id) {
+    var hour by rememberSaveable(existing?.id) {
         mutableIntStateOf((existing?.reminderHour ?: defaultReminderHour).coerceIn(0, 23))
     }
-    var minute by remember(existing?.id) {
+    var minute by rememberSaveable(existing?.id) {
         mutableIntStateOf((existing?.reminderMinute ?: defaultReminderMinute).coerceIn(0, 59))
     }
 
     var showTimePicker by remember { mutableStateOf(false) }
     var groupExpanded by remember { mutableStateOf(false) }
-    var priorityExpanded by remember { mutableStateOf(false) }
-    var showNewGroup by remember { mutableStateOf(false) }
-    var newGroupName by remember { mutableStateOf("") }
-    var newGroupIcon by remember { mutableStateOf("star") }
-    var newGroupColor by remember { mutableStateOf("#7C3AED") }
+    var showOptions by rememberSaveable(existing?.id) { mutableStateOf(existing != null) }
+    var showNewGroup by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var newGroupName by rememberSaveable(existing?.id) { mutableStateOf("") }
+    var newGroupIcon by rememberSaveable(existing?.id) { mutableStateOf("star") }
+    var newGroupColor by rememberSaveable(existing?.id) { mutableStateOf("#7C3AED") }
     val titleFocusRequester = remember { FocusRequester() }
     val groupNameFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-
-    LaunchedEffect(existing?.id) {
-        if (existing == null) {
-            // Let the dialog and text field enter the composition before requesting focus.
-            withFrameNanos { }
-            titleFocusRequester.requestFocus()
-            withFrameNanos { }
-            keyboardController?.show()
-        }
-    }
-    LaunchedEffect(showNewGroup) {
-        if (showNewGroup) {
-            withFrameNanos { }
-            groupNameFocusRequester.requestFocus()
-            withFrameNanos { }
-            keyboardController?.show()
-        }
-    }
 
     val menuGroups = remember(availableGroups, selectedGroup) {
         if (availableGroups.any { it.name.equals(selectedGroup.name, ignoreCase = true) }) {
@@ -152,12 +149,32 @@ fun AddEditTaskDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                if (existing == null) "Add task" else "Edit task",
+                if (existing == null) stringResource(R.string.add_task) else stringResource(R.string.edit_task),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold
             )
         },
         text = {
+            // Dialog content has its own composition. Request focus here only after
+            // the field modifiers have attached, including after state restoration.
+            LaunchedEffect(existing?.id) {
+                if (existing == null) {
+                    // Let the dialog and text field enter the composition before requesting focus.
+                    withFrameNanos { }
+                    titleFocusRequester.requestFocus()
+                    withFrameNanos { }
+                    keyboardController?.show()
+                }
+            }
+            LaunchedEffect(showNewGroup, showOptions) {
+                if (showNewGroup && showOptions) {
+                    withFrameNanos { }
+                    groupNameFocusRequester.requestFocus()
+                    withFrameNanos { }
+                    keyboardController?.show()
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .heightIn(max = 560.dp)
@@ -170,7 +187,7 @@ fun AddEditTaskDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(titleFocusRequester),
-                    label = { Text("Title") },
+                    label = { Text(stringResource(R.string.title)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Sentences,
@@ -178,70 +195,31 @@ fun AddEditTaskDialog(
                     )
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Priority",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TaskSize.entries.forEach { choice ->
+                        FilterChip(
+                            selected = taskSize == choice,
+                            onClick = { taskSize = choice },
+                            label = { Text(taskSizeLabel(choice)) },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                         )
-                        Box(Modifier.fillMaxWidth()) {
-                            OutlinedButton(
-                                onClick = { priorityExpanded = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = priorityPalette(priority).container,
-                                    contentColor = priorityPalette(priority).content
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    priorityPalette(priority).content.copy(alpha = 0.22f)
-                                )
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(7.dp)
-                                        .background(priorityPalette(priority).content, CircleShape)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    priorityLabel(priority),
-                                    color = priorityPalette(priority).content,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = priorityExpanded,
-                                onDismissRequest = { priorityExpanded = false }
-                            ) {
-                                Priority.entries.forEach { choice ->
-                                    DropdownMenuItem(
-                                        text = { Text(priorityLabel(choice)) },
-                                        leadingIcon = {
-                                            Box(
-                                                Modifier
-                                                    .size(9.dp)
-                                                    .background(priorityPalette(choice).content, CircleShape)
-                                            )
-                                        },
-                                        onClick = {
-                                            priority = choice
-                                            priorityExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
                     }
-
-                    Column(Modifier.weight(1f)) {
+                }
+                Text(stringResource(R.string.task_sizes_explanation), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { showOptions = !showOptions }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(if (showOptions) R.string.fewer_options else R.string.more_options))
+                }
+                if (!showOptions) {
+                    Text(TaskGroups.displayName(context, selectedGroup.name, selectedGroup.iconKey),
+                        style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(if (reminderOn) R.string.reminder_when_active else R.string.reminder_off),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (showOptions) {
+                    Column(Modifier.fillMaxWidth()) {
                         Text(
-                            "Group",
+                            stringResource(R.string.group),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -258,7 +236,7 @@ fun AddEditTaskDialog(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(5.dp))
-                                Text(selectedGroup.name, maxLines = 1)
+                                Text(TaskGroups.displayName(context, selectedGroup.name, selectedGroup.iconKey))
                             }
                             DropdownMenu(
                                 expanded = groupExpanded,
@@ -266,7 +244,7 @@ fun AddEditTaskDialog(
                             ) {
                                 menuGroups.forEach { group ->
                                     DropdownMenuItem(
-                                        text = { Text(group.name) },
+                                        text = { Text(TaskGroups.displayName(context, group.name, group.iconKey)) },
                                         leadingIcon = {
                                             GroupIcon(
                                                 key = group.iconKey,
@@ -285,11 +263,11 @@ fun AddEditTaskDialog(
                                                         }
                                                         groupExpanded = false
                                                     },
-                                                    modifier = Modifier.size(32.dp)
+                                                    modifier = Modifier.size(48.dp)
                                                 ) {
                                                     Icon(
                                                         Icons.Default.DeleteOutline,
-                                                        contentDescription = "Remove ${group.name} group",
+                                                        contentDescription = stringResource(R.string.remove_group, group.name),
                                                         modifier = Modifier.size(18.dp)
                                                     )
                                                 }
@@ -304,7 +282,7 @@ fun AddEditTaskDialog(
                                 }
                                 HorizontalDivider()
                                 DropdownMenuItem(
-                                    text = { Text("Add new group") },
+                                    text = { Text(stringResource(R.string.add_new_group)) },
                                     leadingIcon = {
                                         GroupIcon(
                                             key = "star",
@@ -321,7 +299,6 @@ fun AddEditTaskDialog(
                             }
                         }
                     }
-                }
 
                 if (showNewGroup) {
                     Surface(
@@ -333,14 +310,14 @@ fun AddEditTaskDialog(
                             modifier = Modifier.padding(10.dp),
                             verticalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
-                            Text("New group", style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.new_group), style = MaterialTheme.typography.titleSmall)
                             OutlinedTextField(
                                 value = newGroupName,
                                 onValueChange = { newGroupName = it },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .focusRequester(groupNameFocusRequester),
-                                label = { Text("Group name") },
+                                label = { Text(stringResource(R.string.group_name)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     capitalization = KeyboardCapitalization.Words,
@@ -348,7 +325,7 @@ fun AddEditTaskDialog(
                                 )
                             )
 
-                            Text("Icon", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.icon), style = MaterialTheme.typography.labelMedium)
                             val iconColumns = remember {
                                 groupIconChoices.chunked(2)
                             }
@@ -395,7 +372,7 @@ fun AddEditTaskDialog(
                                 }
                             }
 
-                            Text("Color", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.color), style = MaterialTheme.typography.labelMedium)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -422,7 +399,7 @@ fun AddEditTaskDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End
                             ) {
-                                TextButton(onClick = { showNewGroup = false }) { Text("Cancel") }
+                                TextButton(onClick = { showNewGroup = false }) { Text(stringResource(R.string.cancel)) }
                                 TextButton(
                                     enabled = newGroupName.isNotBlank() &&
                                         menuGroups.none { it.name.equals(newGroupName.trim(), ignoreCase = true) },
@@ -438,7 +415,7 @@ fun AddEditTaskDialog(
                                         showNewGroup = false
                                     }
                                 ) {
-                                    Text("Add")
+                                    Text(stringResource(R.string.add))
                                 }
                             }
                         }
@@ -449,7 +426,7 @@ fun AddEditTaskDialog(
                     value = comment,
                     onValueChange = { comment = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Comment (optional)") },
+                    label = { Text(stringResource(R.string.comment_optional)) },
                     minLines = 1,
                     maxLines = 2,
                     keyboardOptions = KeyboardOptions(
@@ -473,6 +450,23 @@ fun AddEditTaskDialog(
                         showTimePicker = true
                     }
                 )
+                if (reminderOn) {
+                    val reminderTask = (existing ?: Task(title = title)).copy(
+                        reminderEnabled = true,
+                        reminderHour = displayedReminderHour,
+                        reminderMinute = displayedReminderMinute
+                    )
+                    Text(
+                        if (!notificationsAvailable) stringResource(R.string.notifications_blocked)
+                        else taskReminderSummary(context, reminderTask, SettingsStore(context), clock),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (!useDefaultTime) TextButton(onClick = { useDefaultTime = true }) {
+                        Text(stringResource(R.string.use_default_reminder))
+                    }
+                }
+                }
             }
         },
         confirmButton = {
@@ -482,7 +476,7 @@ fun AddEditTaskDialog(
                     onSave(
                         title.trim(),
                         selectedGroup,
-                        priority,
+                        taskSize,
                         comment.trim(),
                         reminderOn,
                         if (reminderOn && !useDefaultTime) hour else null,
@@ -490,11 +484,11 @@ fun AddEditTaskDialog(
                     )
                 }
             ) {
-                Text(if (existing == null) "Add" else "Save")
+                Text(if (existing == null) stringResource(R.string.add) else stringResource(R.string.save))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 
@@ -560,7 +554,7 @@ private fun ReminderRow(
             }
             Spacer(Modifier.width(7.dp))
             Text(
-                text = "Remind me",
+                text = stringResource(R.string.remind_me),
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -577,7 +571,7 @@ private fun ReminderRow(
                 )
                 Spacer(Modifier.width(5.dp))
                 Text(
-                    "%02d:%02d".format(hour, minute),
+                    formatAppTime(LocalContext.current, hour, minute),
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -596,7 +590,7 @@ fun SimpleTimePickerDialog(
     val state = rememberTimePickerState(
         initialHour = initialHour,
         initialMinute = initialMinute,
-        is24Hour = true
+        is24Hour = android.text.format.DateFormat.is24HourFormat(LocalContext.current)
     )
 
     Dialog(onDismissRequest = onDismiss) {
@@ -608,15 +602,15 @@ fun SimpleTimePickerDialog(
                 modifier = Modifier.padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Select time", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.select_time), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(16.dp))
                 TimePicker(state = state)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
-                    TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("OK") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text(stringResource(R.string.ok)) }
                 }
             }
         }

@@ -1,3 +1,5 @@
+import java.time.Duration
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,8 +14,9 @@ android {
         applicationId = "com.tasknext.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
-        versionName = "1.8.0"
+        versionCode = 34
+        versionName = "2.0.0-alpha9"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -43,6 +46,8 @@ android {
         jvmTarget = "1.8"
     }
 
+    testOptions { unitTests.isIncludeAndroidResources = true }
+
     buildFeatures {
         compose = true
     }
@@ -51,6 +56,8 @@ android {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
@@ -72,5 +79,23 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("org.robolectric:robolectric:4.13")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+// Fail with usable diagnostics instead of leaving a stalled UI test running for hours.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    timeout.set(Duration.ofMinutes(8))
+    testLogging {
+        events("started", "passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }

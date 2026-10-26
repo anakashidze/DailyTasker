@@ -3,14 +3,20 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
-
+    branches:
+      - main
+      - "chatgpt/**"
 permissions:
   contents: read
+
+concurrency:
+  group: tasknext-build-${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Check out source
@@ -34,12 +40,86 @@ jobs:
           gradle-version: '8.7'
           cache-provider: basic
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon
+      - name: Run regression tests
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          mkdir -p app/build/diagnostics
+          (
+            sleep 180
+            jps -lv > app/build/diagnostics/java-processes.txt
+            for pid in $(jps -l | awk '$2 == "worker.org.gradle.process.internal.worker.GradleWorkerMain" {print $1}'); do
+              jstack -l "$pid" > "app/build/diagnostics/test-worker-$pid.txt" || true
+            done
+          ) &
+          diagnostic_pid=$!
+          trap 'kill "$diagnostic_pid" 2>/dev/null || true' EXIT
+          gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test reminder navigation on Android
+        timeout-minutes: 15
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: TaskNext-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          emulator-boot-timeout: 300
+          script: |
+            adb logcat -c
+            bash -c 'trap "adb logcat -d > app/build/diagnostics/emulator-logcat.txt" EXIT; gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace'
+
+      - name: Upload test results and Room schema
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: DailyTasker-alpha9-test-results
+          path: |
+            app/build/test-results/testDebugUnitTest
+            app/build/reports/tests/testDebugUnitTest
+            app/build/outputs/androidTest-results
+            app/build/reports/androidTests
+            app/schemas
+            app/build/diagnostics
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK integrity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          echo "=== APK file ==="
+          ls -lh "$APK"
+          file "$APK"
+
+          echo "=== ZIP alignment ==="
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 "$APK"
+
+          echo "=== Manifest / package ==="
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | head -n 20
+
+          echo "=== Signature ==="
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+
+          echo "=== SHA-256 ==="
+          sha256sum "$APK" | tee app/build/outputs/apk/debug/app-debug.apk.sha256
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: DailyTasker-v2.0.0-alpha9-verified-apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk.sha256
           if-no-files-found: error
+          compression-level: 0
