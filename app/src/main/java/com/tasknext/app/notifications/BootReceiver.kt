@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.tasknext.app.data.AppDatabase
 import com.tasknext.app.data.SettingsStore
+import com.tasknext.app.data.TaskRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -16,7 +17,9 @@ class BootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val settings = SettingsStore(context)
-                val tasks = AppDatabase.getInstance(context).taskDao().getAllOnce()
+                val dao = AppDatabase.getInstance(context).taskDao()
+                TaskRepository(dao, settings).rolloverDayIfNeeded()
+                val tasks = dao.getAllOnce()
                 tasks.forEach { task ->
                     if (task.slot != null && task.reminderEnabled && settings.notificationsEnabled) {
                         NotificationScheduler.schedule(
@@ -29,6 +32,10 @@ class BootReceiver : BroadcastReceiver() {
                         NotificationScheduler.cancel(context, task.id)
                     }
                 }
+                val todayTask = tasks.firstOrNull {
+                    !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
+                }
+                NotificationScheduler.syncDailyReminders(context, settings, todayTask)
             } finally {
                 pendingResult.finish()
             }

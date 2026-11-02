@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Task::class, CompletionLog::class], version = 6, exportSchema = false)
+@Database(entities = [Task::class, CompletionLog::class, DailyOutcome::class, SmallTaskCompletion::class], version = 10, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
 
@@ -17,8 +17,7 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE tasks ADD COLUMN colorName TEXT NOT NULL DEFAULT 'Custom'")
-                db.execSQL(
-                    """
+                db.execSQL("""
                     UPDATE tasks
                     SET colorName = CASE colorHex
                         WHEN '#4F46E5' THEN 'Indigo'
@@ -30,27 +29,19 @@ abstract class AppDatabase : RoomDatabase() {
                         WHEN '#6B7280' THEN 'Gray'
                         ELSE 'Custom'
                     END
-                    """.trimIndent()
-                )
+                """.trimIndent())
             }
         }
 
-        /**
-         * Older TaskNext versions logged completions but returned the same task to
-         * the active backlog. Under the new terminal-completion rule, any task that
-         * already has a History record must no longer appear in active lists.
-         */
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    """
+                db.execSQL("""
                     UPDATE tasks
                     SET isArchived = 1,
                         slot = NULL,
                         reminderEnabled = 0
                     WHERE id IN (SELECT DISTINCT taskId FROM completion_log)
-                    """.trimIndent()
-                )
+                """.trimIndent())
             }
         }
 
@@ -64,33 +55,99 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE completion_log ADD COLUMN prioritySnapshot TEXT NOT NULL DEFAULT 'MEDIUM'")
                 db.execSQL("ALTER TABLE completion_log ADD COLUMN groupNameSnapshot TEXT NOT NULL DEFAULT 'Task'")
                 db.execSQL("ALTER TABLE completion_log ADD COLUMN groupIconSnapshot TEXT NOT NULL DEFAULT 'task'")
                 db.execSQL("ALTER TABLE completion_log ADD COLUMN commentSnapshot TEXT NOT NULL DEFAULT ''")
-
-                // Enrich existing History rows from the archived task that created them.
-                db.execSQL(
-                    """
+                db.execSQL("""
                     UPDATE completion_log
                     SET prioritySnapshot = COALESCE((SELECT priority FROM tasks WHERE tasks.id = completion_log.taskId), 'MEDIUM'),
                         groupNameSnapshot = COALESCE((SELECT colorName FROM tasks WHERE tasks.id = completion_log.taskId), 'Task'),
                         groupIconSnapshot = COALESCE((SELECT groupIcon FROM tasks WHERE tasks.id = completion_log.taskId), 'task'),
                         commentSnapshot = COALESCE((SELECT comment FROM tasks WHERE tasks.id = completion_log.taskId), '')
-                    """.trimIndent()
-                )
+                """.trimIndent())
             }
         }
-
 
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE tasks ADD COLUMN overdueSinceEpochDay INTEGER")
             }
         }
+
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tasks ADD COLUMN taskSize TEXT NOT NULL DEFAULT 'BIG'")
+                db.execSQL("ALTER TABLE completion_log ADD COLUMN eventType TEXT NOT NULL DEFAULT 'COMPLETED'")
+                db.execSQL("ALTER TABLE completion_log ADD COLUMN effectiveEpochDay INTEGER")
+                db.execSQL("ALTER TABLE completion_log ADD COLUMN recoveredFromLogId INTEGER")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS daily_outcome (
+                        epochDay INTEGER NOT NULL PRIMARY KEY,
+                        status TEXT NOT NULL,
+                        sourceTaskId INTEGER,
+                        updatedAtEpochMillis INTEGER NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE completion_log ADD COLUMN taskSizeSnapshot TEXT NOT NULL DEFAULT 'BIG'")
+                // Existing v1.8/alpha1 Bonus slots semantically become Small tasks.
+                db.execSQL("UPDATE tasks SET taskSize = 'SMALL' WHERE slot IN (1, 2)")
+            }
+        }
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS small_task_completion (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        taskId INTEGER NOT NULL,
+                        epochDay INTEGER NOT NULL,
+                        completedAtEpochMillis INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_small_task_completion_epochDay " +
+                        "ON small_task_completion(epochDay)"
+                )
+            }
+        }
+
+        // v9 has already shipped, so repair it with a forward migration rather than
+        // changing an old migration that installed users will never run again.
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    INSERT INTO small_task_completion (taskId, epochDay, completedAtEpochMillis)
+                    SELECT history.taskId, history.epochDay, history.completedAtEpochMillis
+                    FROM (
+                        SELECT taskId,
+                            COALESCE(effectiveEpochDay, CAST(
+                                julianday(completedAtEpochMillis / 1000, 'unixepoch', 'localtime', 'start of day')
+                                - 2440587.5 AS INTEGER)) AS epochDay,
+                            MIN(completedAtEpochMillis) AS completedAtEpochMillis
+                        FROM completion_log
+                        WHERE eventType = 'COMPLETED' AND taskSizeSnapshot = 'SMALL'
+                        GROUP BY taskId, epochDay
+                    ) AS history
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM small_task_completion AS ledger
+                        WHERE ledger.taskId = history.taskId AND ledger.epochDay = history.epochDay
+                    )
+                """.trimIndent())
+            }
+        }
+
+        internal val ALL_MIGRATIONS = arrayOf(
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10
+        )
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -99,7 +156,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "tasknext.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(*ALL_MIGRATIONS)
                     .build()
                     .also { INSTANCE = it }
             }
