@@ -2,6 +2,7 @@ package com.tasknext.app.notifications
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -18,9 +19,15 @@ object NotificationScheduler {
     const val ACTION_SNOOZE_ALARM = "com.tasknext.app.action.SNOOZE_ALARM"
     const val ACTION_PLAN_TOMORROW = "com.tasknext.app.action.PLAN_TOMORROW"
     const val ACTION_STREAK_RISK = "com.tasknext.app.action.STREAK_RISK"
+    const val ACTION_DAY_START = "com.tasknext.app.action.DAY_START"
+    const val ACTION_LOCK_TODAY = "com.tasknext.app.action.LOCK_TODAY"
+    const val ACTION_BEFORE_LOCK = "com.tasknext.app.action.BEFORE_LOCK"
 
     private const val PLAN_REQUEST_CODE = 9101
     private const val STREAK_REQUEST_CODE = 9102
+    private const val DAY_START_REQUEST_CODE = 9103
+    private const val LOCK_REQUEST_CODE = 9104
+    private const val BEFORE_LOCK_REQUEST_CODE = 9105
 
     fun schedule(context: Context, task: Task, defaultHour: Int, defaultMinute: Int) {
         val settings = SettingsStore(context)
@@ -63,9 +70,22 @@ object NotificationScheduler {
         todayTask: Task?,
         onlyAction: String? = null
     ) {
+        // Planning is app behavior, independent of notification permission/preferences.
+        if (onlyAction == null || onlyAction == ACTION_DAY_START) {
+            scheduleDailyAction(context, ACTION_DAY_START, DAY_START_REQUEST_CODE, nextOccurrence(0, 0))
+        }
+        if (onlyAction == null || onlyAction == ACTION_LOCK_TODAY) {
+            scheduleDailyAction(context, ACTION_LOCK_TODAY, LOCK_REQUEST_CODE,
+                nextOccurrence(settings.todayLockHour, settings.todayLockMinute))
+        }
         if (!settings.notificationsEnabled) {
             cancelDailyReminders(context)
             return
+        }
+
+        if (onlyAction == null || onlyAction == ACTION_BEFORE_LOCK) {
+            scheduleDailyAction(context, ACTION_BEFORE_LOCK, BEFORE_LOCK_REQUEST_CODE,
+                nextPreLockReminder(settings).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
         }
 
         if (onlyAction == null || onlyAction == ACTION_PLAN_TOMORROW) {
@@ -85,7 +105,7 @@ object NotificationScheduler {
 
         }
         if (onlyAction == null || onlyAction == ACTION_STREAK_RISK) {
-            if (settings.streakRiskReminderEnabled) {
+            if (settings.streakRiskReminderEnabled && settings.streakCount > 0) {
                 val preferredMinutes =
                     settings.streakRiskReminderHour * 60 + settings.streakRiskReminderMinute
 
@@ -113,6 +133,7 @@ object NotificationScheduler {
                 )
             } else {
                 cancelDailyAction(context, ACTION_STREAK_RISK, STREAK_REQUEST_CODE)
+                context.getSystemService(NotificationManager::class.java).cancel(STREAK_REQUEST_CODE)
             }
         }
     }
@@ -126,6 +147,19 @@ object NotificationScheduler {
     fun cancelDailyReminders(context: Context) {
         cancelDailyAction(context, ACTION_PLAN_TOMORROW, PLAN_REQUEST_CODE)
         cancelDailyAction(context, ACTION_STREAK_RISK, STREAK_REQUEST_CODE)
+        cancelDailyAction(context, ACTION_BEFORE_LOCK, BEFORE_LOCK_REQUEST_CODE)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        listOf(PLAN_REQUEST_CODE, STREAK_REQUEST_CODE, BEFORE_LOCK_REQUEST_CODE).forEach { manager.cancel(it) }
+    }
+
+    internal fun upcomingLock(settings: SettingsStore, now: LocalDateTime = LocalDateTime.now()): LocalDateTime {
+        val lock = now.toLocalDate().atTime(settings.todayLockHour, settings.todayLockMinute)
+        return if (lock.isAfter(now)) lock else lock.plusDays(1)
+    }
+
+    internal fun nextPreLockReminder(settings: SettingsStore, now: LocalDateTime = LocalDateTime.now()): LocalDateTime {
+        val reminder = upcomingLock(settings, now).minusMinutes(30)
+        return if (reminder.isAfter(now)) reminder else reminder.plusDays(1)
     }
 
     private fun cancelDailyAction(context: Context, action: String, requestCode: Int) {

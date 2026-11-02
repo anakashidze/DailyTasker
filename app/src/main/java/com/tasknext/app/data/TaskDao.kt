@@ -42,6 +42,18 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isArchived = 0 ORDER BY orderIndex ASC")
     suspend fun getAllOnce(): List<Task>
 
+    /** Read the latest queue and claim Today atomically, including competing receivers. */
+    @Transaction
+    suspend fun promoteNextToToday(epochDay: Long): Task? {
+        if (getDailyOutcome(epochDay)?.status in setOf(DailyOutcomeStatus.COMPLETED, DailyOutcomeStatus.REST)) return null
+        val tasks = getAllOnce()
+        if (tasks.any { it.slot == 0 }) return null
+        val next = tasks.firstOrNull {
+            it.taskSize == TaskSize.BIG && it.slot == null && it.overdueSinceEpochDay == null
+        } ?: return null
+        return next.copy(slot = 0).also { update(it) }
+    }
+
     @Query("""
         UPDATE tasks
         SET colorHex = :defaultColorHex,

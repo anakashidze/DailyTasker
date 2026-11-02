@@ -54,7 +54,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         openRequest = if (savedInstanceState?.containsKey("pendingTaskDestination") == true) {
-            TaskOpenRequest(savedInstanceState.getLong("pendingTaskDestination").takeIf { it > 0 })
+            TaskOpenRequest(savedInstanceState.getLong("pendingTaskDestination").takeIf { it > 0 },
+                savedInstanceState.getBoolean("pendingQueueDestination"))
         } else if (savedInstanceState == null) TaskDestination.request(intent) else null
 
         setContent {
@@ -145,7 +146,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        openRequest?.let { outState.putLong("pendingTaskDestination", it.taskId ?: -1L) }
+        openRequest?.let {
+            outState.putLong("pendingTaskDestination", it.taskId ?: -1L)
+            outState.putBoolean("pendingQueueDestination", it.openQueue)
+        }
         super.onSaveInstanceState(outState)
     }
 

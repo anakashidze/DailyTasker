@@ -50,6 +50,7 @@ class NotificationTest {
         val settings = SettingsStore(context)
         settings.planTomorrowReminderHour = 20
         settings.streakRiskReminderHour = 20
+        settings.streakCount = 1
         NotificationScheduler.syncDailyReminders(context, settings, null)
         val manager = shadowOf(context.getSystemService(AlarmManager::class.java))
         val before = manager.scheduledAlarms.single {
@@ -60,6 +61,6 @@ class NotificationTest {
             shadowOf(it.operation).savedIntent.action == NotificationScheduler.ACTION_STREAK_RISK
         }
         assertSame(before, after)
-        assertEquals(2, manager.scheduledAlarms.size)
+        assertEquals(5, manager.scheduledAlarms.size)
     }
 }

@@ -38,13 +38,14 @@ internal fun formatAppTime(context: Context, hour: Int, minute: Int): String =
         set(Calendar.MINUTE, minute)
     }.time)
 
-internal fun isWeekendQueueDate(today: LocalDate, index: Int): Boolean =
-    today.plusDays(index.toLong() + 1).dayOfWeek.let { it == DayOfWeek.SATURDAY || it == DayOfWeek.SUNDAY }
+internal fun isWeekendQueueDate(today: LocalDate, index: Int, firstIsToday: Boolean = false): Boolean =
+    today.plusDays(index.toLong() + if (firstIsToday) 0 else 1).dayOfWeek.let { it == DayOfWeek.SATURDAY || it == DayOfWeek.SUNDAY }
 
-internal fun queueDateLabel(context: Context, index: Int, today: LocalDate): String = when (index) {
+internal fun queueDateLabel(context: Context, index: Int, today: LocalDate, firstIsToday: Boolean = false): String = when (val dayIndex = index - if (firstIsToday) 1 else 0) {
+    -1 -> context.getString(R.string.today_upper)
     0 -> context.getString(R.string.tomorrow_upper)
     1 -> context.getString(R.string.day_after_upper)
-    else -> today.plusDays(index.toLong() + 1).format(DateTimeFormatter.ofPattern("dd-MMM", Locale.getDefault()))
+    else -> today.plusDays(dayIndex.toLong() + 1).format(DateTimeFormatter.ofPattern("dd-MMM", Locale.getDefault()))
 }
 
 /** Indices are in the full candidate list, including candidates outside the viewport. */

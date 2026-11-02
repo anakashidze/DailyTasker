@@ -17,6 +17,12 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28])
 class TaskDestinationTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
+    @Test fun queueDestinationIsDistinctFromTodayAndDoesNotSelectATask() {
+        val queue = TaskDestination.intent(context, openQueue = true)
+        assertNotEquals(TaskDestination.intent(context).data, queue.data)
+        assertEquals(true, TaskDestination.request(queue)?.openQueue)
+        assertNull(TaskDestination.request(queue)?.taskId)
+    }
     @Test fun taskNotificationsKeepDistinctDestinationsEvenWithSameRequestCode() {
         val manager = shadowOf(context.getSystemService(NotificationManager::class.java))
         ReminderReceiver().showNotification(context, 15L, "First", 10)

@@ -5,7 +5,7 @@
     <string name="settings_title">Settings</string>
     <string name="settings_daily_planning">Daily planning</string>
     <string name="today_lock_time">Today lock time</string>
-    <string name="today_lock_description">Choose Today before this time. After the lock, Today cannot be replaced, moved out, deleted, or edited. Latest allowed time is 12:00.</string>
+    <string name="today_lock_description">The first Big task becomes Today automatically each morning. Reorder tomorrow’s queue in Tasks. You can change Today until this time; then it locks automatically. A reminder arrives 30 minutes before locking when notifications are enabled. Latest lock: 12:00.</string>
     <string name="settings_notifications">Notifications</string>
     <string name="notifications_enabled">Notifications enabled</string>
     <string name="default_reminder_time">Default task reminder</string>
@@ -57,7 +57,7 @@
     <string name="clear_history">Clear history</string>
     <string name="clear_history_question">Clear history?</string>
     <string name="clear_history_description">This removes History records. Your active tasks and streak ledger are not affected.</string>
-    <string name="nothing_set_today">Nothing set for today.\nChoose a Big task from Next tasks.</string>
+    <string name="nothing_set_today">No Big task set for today</string>
     <string name="pull_to_add_task">Pull to add task</string>
     <string name="release_to_add_task">Release to add task</string>
     <string name="done">Done</string>
@@ -71,7 +71,7 @@
     <string name="add_new_group">Add new group</string>
     <string name="select_time">Select time</string>
     <string name="ok">OK</string>
-    <string name="next_tasks_description">Order suggests upcoming days. Reordering changes the dates. Choose Today each morning; tasks do not move automatically.</string>
+    <string name="next_tasks_description">Queue order sets the coming days. The first Big task becomes Today automatically each morning. Drag to reorder; change Today before its lock time.</string>
     <string name="no_big_tasks">No Big tasks scheduled.</string>
     <string name="bonus_backlog_description">Small tasks live here. Use the star to bring one into Bonus today.</string>
     <string name="no_small_tasks">No Small tasks in backlog.</string>
@@ -86,7 +86,7 @@
     <string name="widget_day_complete">DAY COMPLETE</string>
     <string name="widget_all_done">All done for today</string>
     <string name="widget_no_task_selected">No Big task selected</string>
-    <string name="today_selection_closed">Today was not selected before the lock time. The selection window is closed.</string>
+    <string name="today_selection_closed">No Big task was available when Today locked. Add tasks for tomorrow.</string>
     <string name="rest_credit_count">%1$d Rest Credit</string>
     <string name="rest_credits_count">%1$d Rest Credits</string>
     <string name="use_rest_credit">Use Rest Credit</string>
@@ -102,8 +102,8 @@
     <string name="completed_yesterday">Completed yesterday</string>
     <string name="complete_today">Complete today</string>
     <string name="notification_planning_channel">Planning reminders</string>
-    <string name="notification_plan_title">Plan tomorrow</string>
-    <string name="notification_plan_body">Add or choose a Big task for Tomorrow.</string>
+    <string name="notification_plan_title">Review tomorrow’s order</string>
+    <string name="notification_plan_body">Add a Big task for tomorrow. The first in the queue becomes Today automatically and locks at %1$s.</string>
     <string name="notification_streak_title">Your streak is at risk</string>
     <string name="notification_streak_body">Your %1$d-day streak is still open. Complete Today or use a Rest Credit if available.</string>
     <string name="notification_today_open_body">Today is still open. Complete your Big task or use a Rest Credit if available.</string>
@@ -121,8 +121,8 @@
     <string name="history_record_deleted">History record deleted</string>
     <string name="choose_today_task">Choose today’s task</string>
     <string name="add_first_task">Add your first task</string>
-    <string name="choose_before">Choose before %1$s</string>
-    <string name="today_locks_at">Locks at %1$s</string>
+    <string name="choose_before">The first queued Big task will fill Today automatically at %1$s. You can choose one now.</string>
+    <string name="today_locks_at">Locks automatically at %1$s</string>
     <string name="plan_next_tasks">Plan upcoming tasks</string>
     <string name="reminder_off">Reminder off</string>
     <string name="reminder_today_at">Reminder today at %1$s</string>
@@ -157,4 +157,8 @@
         <item quantity="one">%1$d Rest Credit</item>
         <item quantity="other">%1$d Rest Credits</item>
     </plurals>
+    <string name="notification_plan_queue_body">Next: %1$s. Reorder Tasks if needed. It becomes Today automatically tomorrow and locks at %2$s.</string>
+    <string name="notification_before_lock_title">Your task locks soon</string>
+    <string name="notification_before_lock_body">%1$s locks at %2$s. Review Tasks now if you want a different order. Locking is automatic.</string>
+    <string name="notification_before_lock_empty">Today locks at %1$s. Add a Big task now to include it automatically.</string>
 </resources>

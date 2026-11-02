@@ -1,12 +1,20 @@
 package com.tasknext.app.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.temporal.TemporalAdjusters
 
 class TaskRepository(private val dao: TaskDao, private val settings: SettingsStore) {
+
+    companion object {
+        // Activity, widget and alarm receivers use separate repository instances.
+        private val planningMutex = Mutex()
+    }
 
     fun observeAllTasks(): Flow<List<Task>> = dao.observeAllTasks()
     fun observeActiveSlots(): Flow<List<Task>> = dao.observeActiveSlots()
@@ -197,42 +205,49 @@ class TaskRepository(private val dao: TaskDao, private val settings: SettingsSto
         dao.update(task.copy(slot = freeSlot, overdueSinceEpochDay = null))
     }
 
-    suspend fun rolloverDayIfNeeded() {
+    suspend fun rolloverDayIfNeeded(now: LocalDateTime = LocalDateTime.now()) = planningMutex.withLock {
         seedOutcomeLedgerFromLegacyStreakIfNeeded()
-        val today = todayEpochDay()
-        if (settings.lastActiveEpochDay == today) return
+        val today = now.toLocalDate().toEpochDay()
+        if (settings.lastActiveEpochDay != today) {
 
-        val previousActiveDay = settings.lastActiveEpochDay
-        val previousDayWasCompleted = previousActiveDay != -1L &&
-            settings.dayCompletedEpochDay == previousActiveDay
+            val previousActiveDay = settings.lastActiveEpochDay
+            val previousDayWasCompleted = previousActiveDay != -1L &&
+                settings.dayCompletedEpochDay == previousActiveDay
 
-        val allBeforeRollover = dao.getAllOnce()
-        val previousToday = allBeforeRollover.firstOrNull {
-            !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
-        }
+            val allBeforeRollover = dao.getAllOnce()
+            val previousToday = allBeforeRollover.firstOrNull {
+                !it.isArchived && it.slot == 0 && it.overdueSinceEpochDay == null
+            }
 
-        if (previousToday != null && !previousDayWasCompleted && previousActiveDay != -1L) {
-            dao.update(
-                previousToday.copy(
-                    slot = null,
-                    reminderEnabled = false,
-                    overdueSinceEpochDay = previousActiveDay
+            if (previousToday != null && !previousDayWasCompleted && previousActiveDay != -1L) {
+                dao.update(
+                    previousToday.copy(
+                        slot = null,
+                        reminderEnabled = false,
+                        overdueSinceEpochDay = previousActiveDay
+                    )
                 )
-            )
-        }
+            }
 
-        if (previousActiveDay != -1L && !previousDayWasCompleted && dao.getDailyOutcome(previousActiveDay) == null) {
-            dao.upsertDailyOutcome(
-                DailyOutcome(epochDay = previousActiveDay, status = DailyOutcomeStatus.MISSED)
-            )
-        }
+            if (previousActiveDay != -1L && !previousDayWasCompleted && dao.getDailyOutcome(previousActiveDay) == null) {
+                dao.upsertDailyOutcome(
+                    DailyOutcome(epochDay = previousActiveDay, status = DailyOutcomeStatus.MISSED)
+                )
+            }
 
-        // v2: Today is always chosen explicitly by the user. Day rollover never
-        // promotes Tomorrow/Next automatically.
-        settings.dayCompletedEpochDay = -1L
-        settings.queuedTomorrowTaskId = -1L
-        settings.lastActiveEpochDay = today
-        recalculateStreakCacheFromLedger()
+            settings.dayCompletedEpochDay = if (dao.getDailyOutcome(today)?.status in
+                setOf(DailyOutcomeStatus.COMPLETED, DailyOutcomeStatus.REST)) today else -1L
+            settings.queuedTomorrowTaskId = -1L
+            if (settings.dayCompletedEpochDay != today) dao.promoteNextToToday(today)
+            settings.lastActiveEpochDay = today
+            recalculateStreakCacheFromLedger()
+        }
+        // If Today was left empty during the morning, use the latest queue once
+        // at the deadline. Later additions must not change a day already locked.
+        if (isTodayLocked(now.toLocalTime()) && settings.lastAutoLockEpochDay != today) {
+            if (settings.dayCompletedEpochDay != today) dao.promoteNextToToday(today)
+            settings.lastAutoLockEpochDay = today
+        }
     }
 
     private suspend fun recalculateStreakCacheFromLedger() {

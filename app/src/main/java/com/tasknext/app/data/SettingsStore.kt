@@ -100,6 +100,9 @@ class SettingsStore(context: Context) {
     var lastActiveEpochDay: Long
         get() = prefs.getLong("last_active_epoch_day", -1L)
         set(value) = prefs.edit().putLong("last_active_epoch_day", value).apply()
+    var lastAutoLockEpochDay: Long
+        get() = prefs.getLong("last_auto_lock_epoch_day", -1L)
+        set(value) = prefs.edit().putLong("last_auto_lock_epoch_day", value).apply()
     var dayCompletedEpochDay: Long
         get() = prefs.getLong("day_completed_epoch_day", -1L)
         set(value) = prefs.edit().putLong("day_completed_epoch_day", value).apply()

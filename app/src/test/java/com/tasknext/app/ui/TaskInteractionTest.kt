@@ -5,6 +5,12 @@ import org.junit.Test
 import java.time.LocalDate
 
 class TaskInteractionTest {
+    @Test fun pendingTodayUsesActualWeekendDateWithoutShiftingTheQueue() {
+        val saturday = LocalDate.of(2026, 10, 24)
+        assertTrue(isWeekendQueueDate(saturday, 0, firstIsToday = true))
+        assertTrue(isWeekendQueueDate(saturday, 1, firstIsToday = true))
+        assertFalse(isWeekendQueueDate(saturday, 2, firstIsToday = true))
+    }
     @Test fun fridayMarksTomorrowAndDayAfterAsWeekend() {
         val friday = LocalDate.of(2026, 10, 23)
         assertTrue(isWeekendQueueDate(friday, 0))

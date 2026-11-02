@@ -95,6 +95,8 @@ fun TaskListScreen(
     val taskGroups by viewModel.taskGroups.collectAsState()
     val clock = rememberAppClock()
     val todayLocked = viewModel.isTodayLocked()
+    val dayComplete by viewModel.dayComplete.collectAsState()
+    val firstIsToday = mandatory == null && !todayLocked && !dayComplete
     var showAdd by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var backdateTask by remember { mutableStateOf<Task?>(null) }
@@ -253,7 +255,7 @@ fun TaskListScreen(
                 val tag = when (hit.value.section) {
                     "today" -> context.getString(R.string.today_upper)
                     "bonus" -> context.getString(R.string.bonus_upper)
-                    else -> if (task.taskSize == TaskSize.BIG) queueDateLabel(context, hit.value.index, clock.toLocalDate()) else null
+                    else -> if (task.taskSize == TaskSize.BIG) queueDateLabel(context, hit.value.index, clock.toLocalDate(), firstIsToday) else null
                 }
                 val drag = FloatingTask(task, hit.value, tag)
                 floating = drag
@@ -307,7 +309,7 @@ fun TaskListScreen(
                 }.then(if (hidden) Modifier.clearAndSetSemantics { } else Modifier),
                 task = task,
                 tag = tag,
-                weekend = section == "pool" && task.taskSize == TaskSize.BIG && isWeekendQueueDate(clock.toLocalDate(), index),
+                weekend = section == "pool" && task.taskSize == TaskSize.BIG && isWeekendQueueDate(clock.toLocalDate(), index, firstIsToday),
                 onEdit = { if (onOpenTask != null) onOpenTask(task.id) else editingId = task.id },
                 onDelete = { deleteWithUndo(task) },
                 onComplete = {
@@ -395,7 +397,7 @@ fun TaskListScreen(
                 } }
                 if (bigPool.isEmpty()) item { Text(stringResource(R.string.no_big_tasks)) }
                 itemsIndexed(bigPool, key = { _, task -> task.id }) { index, task ->
-                    TaskCard(task, "pool", index, queueDateLabel(context, index, clock.toLocalDate()))
+                    TaskCard(task, "pool", index, queueDateLabel(context, index, clock.toLocalDate(), firstIsToday))
                 }
                 item(key = "small-header") { Column(Modifier.onGloballyPositioned { poolHeaders[TaskSize.SMALL] = it.boundsInRoot() }) {
                     SectionTitle(stringResource(R.string.bonus_backlog))
@@ -417,7 +419,7 @@ fun TaskListScreen(
                 }.clearAndSetSemantics { this.testTag = "drag-overlay" }) {
                 TaskRow(task = drag.task, tag = drag.tag, onEdit = {},
                     weekend = drag.origin.section == "pool" && drag.task.taskSize == TaskSize.BIG &&
-                        isWeekendQueueDate(clock.toLocalDate(), drag.origin.index),
+                        isWeekendQueueDate(clock.toLocalDate(), drag.origin.index, firstIsToday),
                     onMakeToday = if (drag.origin.section == "pool" && drag.task.taskSize == TaskSize.BIG && !todayLocked) ({}) else null,
                     onMakeBonus = if (drag.origin.section == "pool" && drag.task.taskSize == TaskSize.SMALL && bonusTasks.size < 2) ({}) else null)
             }

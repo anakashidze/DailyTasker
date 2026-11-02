@@ -329,6 +329,8 @@ fun SettingsScreen(
                 lockMinute = safeMinute
                 settings.todayLockHour = safeHour
                 settings.todayLockMinute = safeMinute
+                settings.lastAutoLockEpochDay = -1L
+                viewModel.onAppResumed()
                 showLockTimePicker = false
             }
         )

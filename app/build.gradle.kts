@@ -14,8 +14,8 @@ android {
         applicationId = "com.tasknext.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "2.0.0-alpha9"
+        versionCode = 35
+        versionName = "2.0.0-alpha10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -35,6 +35,7 @@ class TaskNavigationTest {
         SettingsStore(context).apply {
             notificationsEnabled = false
             lastActiveEpochDay = LocalDate.now().toEpochDay()
+            lastAutoLockEpochDay = lastActiveEpochDay
             todayLockHour = 0
             todayLockMinute = 0
         }
@@ -77,6 +78,26 @@ class TaskNavigationTest {
         launchTask(id)
         awaitText("Cold launch details")
         rule.onNodeWithText("Task details").assertIsDisplayed()
+    }
+
+    @Test fun planningReminderOpensQueueFromSettingsAndKeepsItAfterRecreation() {
+        runBlocking(Dispatchers.IO) { db.taskDao().insert(Task(title = "Next queued task", reminderEnabled = false)) }
+        val intent = TaskDestination.intent(context, openQueue = true)
+        scenario = ActivityScenario.launch(intent)
+        awaitText("Next queued task")
+        rule.onNodeWithText("Next queued task").assertIsDisplayed()
+        scenario!!.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithText("Appearance").assertExists()
+        PendingIntent.getActivity(context, 9101, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE).send()
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithText("Appearance").fetchSemanticsNodes().isEmpty()
+        }
+        rule.onNodeWithText("Next queued task").assertIsDisplayed()
+        scenario!!.recreate()
+        rule.onNodeWithText("Next queued task").assertIsDisplayed()
+        rule.onNodeWithText("Task details").assertDoesNotExist()
     }
 
     @Test fun reminderOpensFromSettingsAndDoesNotReplayAfterDismissAndRecreate() {

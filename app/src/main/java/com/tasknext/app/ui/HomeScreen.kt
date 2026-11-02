@@ -93,7 +93,7 @@ fun HomeScreen(
     val completeWithUndo = rememberCompleteWithUndo(viewModel, snackbarHost)
     var showChooseToday by rememberSaveable { mutableStateOf(false) }
     val bigTasks = pool.filter { it.taskSize == com.tasknext.app.data.TaskSize.BIG }
-    LaunchedEffect(clock.toLocalDate()) { viewModel.onAppResumed() }
+    LaunchedEffect(clock.toLocalDate(), todayLocked) { viewModel.onAppResumed() }
 
     var currentPage by rememberSaveable { mutableStateOf(HubPage.HOME) }
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
@@ -143,7 +143,7 @@ fun HomeScreen(
             showAdd = false
             showChooseToday = false
             detailId = it.taskId
-            settleToPage(HubPage.HOME)
+            settleToPage(if (it.openQueue) HubPage.TASKS else HubPage.HOME)
             onOpenRequestHandled()
         }
     }
