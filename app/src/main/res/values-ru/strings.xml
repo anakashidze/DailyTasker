@@ -163,6 +163,7 @@
     </plurals>
     <string name="notification_plan_queue_body">Следующая: %1$s. При необходимости измените порядок задач. Завтра она автоматически станет задачей дня и заблокируется в %2$s.</string>
     <string name="notification_before_lock_title">Задача скоро заблокируется</string>
-    <string name="notification_before_lock_body">%1$s заблокируется в %2$s. Проверьте список, если хотите изменить порядок. Блокировка автоматическая.</string>
+    <string name="notification_before_lock_body">%1$s заблокируется в %2$s. Чтобы заменить её, переместите другую большую задачу в Сегодня до этого времени. Блокировка автоматическая.</string>
     <string name="notification_before_lock_empty">Блокировка Сегодня в %1$s. Добавьте большую задачу сейчас, чтобы она заняла этот день автоматически.</string>
+    <string name="notification_before_lock_tomorrow_body">На завтра: %1$s. Измените порядок до %2$s; первая большая задача будет выбрана и заблокирована автоматически.</string>
 </resources>

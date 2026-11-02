@@ -37,6 +37,8 @@ class TaskDragTest {
         SettingsStore(app).apply {
             notificationsEnabled = false
             lastActiveEpochDay = LocalDate.now().toEpochDay()
+            // These are queue gesture tests; planning for this day is already done.
+            lastAutoLockEpochDay = lastActiveEpochDay
         }
         db = AppDatabase.getInstance(app)
         runBlocking(Dispatchers.IO) { db.clearAllTables() }

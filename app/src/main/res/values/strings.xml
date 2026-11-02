@@ -159,6 +159,7 @@
     </plurals>
     <string name="notification_plan_queue_body">Next: %1$s. Reorder Tasks if needed. It becomes Today automatically tomorrow and locks at %2$s.</string>
     <string name="notification_before_lock_title">Your task locks soon</string>
-    <string name="notification_before_lock_body">%1$s locks at %2$s. Review Tasks now if you want a different order. Locking is automatic.</string>
+    <string name="notification_before_lock_body">%1$s locks at %2$s. To change it, move a different Big task into Today before then. Locking is automatic.</string>
     <string name="notification_before_lock_empty">Today locks at %1$s. Add a Big task now to include it automatically.</string>
+    <string name="notification_before_lock_tomorrow_body">Tomorrow: %1$s. Reorder the queue before %2$s; the first Big task will be selected and locked automatically.</string>
 </resources>

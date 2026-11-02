@@ -159,6 +159,7 @@
     </plurals>
     <string name="notification_plan_queue_body">შემდეგია: %1$s. საჭიროებისას შეცვალეთ რიგი ამოცანებში. ხვალ ის ავტომატურად გახდება დღევანდელი და ჩაიკეტება %2$s-ზე.</string>
     <string name="notification_before_lock_title">ამოცანა მალე ჩაიკეტება</string>
-    <string name="notification_before_lock_body">%1$s ჩაიკეტება %2$s-ზე. თუ რიგის შეცვლა გსურთ, ახლავე შეამოწმეთ ამოცანები. ჩაკეტვა ავტომატურია.</string>
+    <string name="notification_before_lock_body">%1$s ჩაიკეტება %2$s-ზე. შესაცვლელად მანამდე გადაიტანეთ სხვა დიდი ამოცანა დღევანდელში. ჩაკეტვა ავტომატურია.</string>
     <string name="notification_before_lock_empty">დღევანდელი დღე იკეტება %1$s-ზე. დაამატეთ დიდი ამოცანა ახლა, რომ ის ავტომატურად დაემატოს დღეს.</string>
+    <string name="notification_before_lock_tomorrow_body">ხვალისთვის: %1$s. შეცვალეთ რიგი %2$s-მდე; პირველი დიდი ამოცანა ავტომატურად აირჩევა და ჩაიკეტება.</string>
 </resources>

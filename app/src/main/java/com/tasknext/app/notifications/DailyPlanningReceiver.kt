@@ -82,8 +82,8 @@ class DailyPlanningReceiver : BroadcastReceiver() {
                     if (!now.isBefore(lock.minusMinutes(30)) && (!sameDay || !protected)) {
                         val candidate = if (sameDay) todayTask ?: nextTask else nextTask
                         val body = candidate?.let {
-                            lc.getString(R.string.notification_before_lock_body, it.title, lockTime)
-                        } ?: lc.getString(R.string.notification_before_lock_empty, lockTime)
+                            lc.getString(if (sameDay) R.string.notification_before_lock_body else R.string.notification_before_lock_tomorrow_body, it.title, lockTime)
+                        } ?: lc.getString(if (sameDay) R.string.notification_before_lock_empty else R.string.notification_plan_body, lockTime)
                         showPlanningNotification(context, settings, BEFORE_LOCK_NOTIFICATION_ID,
                             R.string.notification_before_lock_title, body, openQueue = true)
                     }
