@@ -89,7 +89,9 @@ class TaskNavigationTest {
         scenario!!.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.onNodeWithText("Appearance").assertExists()
-        PendingIntent.getActivity(context, 9101, intent,
+        // ActivityScenario mutates its launch Intent by adding CLEAR_TASK.
+        // Use a fresh production Intent for the reminder, as real notifications do.
+        PendingIntent.getActivity(context, 9101, TaskDestination.intent(context, openQueue = true),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE).send()
         rule.waitUntil(10_000) {
             rule.onAllNodesWithText("Appearance").fetchSemanticsNodes().isEmpty()
